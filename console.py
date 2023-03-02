@@ -1,9 +1,13 @@
 import os
 import sys
+import re
 import logging
 import traceback
 from multiprocessing import Lock
 from typing import TextIO, Final
+import ctypes
+import subprocess
+import psutil
 
 log: Final[logging.Logger] = logging.getLogger(__name__)
 
@@ -31,6 +35,7 @@ def redirect_log(level=logging.INFO):
     log.handlers.clear()
     log.addHandler(stdoutHandler)
 
+
 class Console:
     """ All the _prefixed methods are for writing console prompts.
     They exist so that as other write calls come in, the console prompt
@@ -42,7 +47,8 @@ class Console:
     _last_source = '' # blank = not the console, 'c' = the console
     _console_stdout = []
     _console_stderr = []
-
+    enable_colors = True
+    
     @staticmethod
     def flush():
         with Console._LOCK:
@@ -52,7 +58,18 @@ class Console:
     def flush_stderr():
         with Console._LOCK:
             sys.stderr.flush()
+            
+    # https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
+    # reset color: \033[0m
+    # \033[31;1;4   31=red, 1=bold, 4=underline
+    __ansi_escape_regex = re.compile(r"\033\[\d+(?:;\d+)*m")
 
+    @staticmethod
+    def _format_text(text: str):
+        if Console.enable_colors:
+            return text
+        else:
+            return Console.__ansi_escape_regex.sub('', text)
 
     @staticmethod
     def __writeln(target_name: str, line: str, source: str = ''):
@@ -65,6 +82,7 @@ class Console:
             Console.__writeln(target_name, text, 'c')
         else:
             with Console._LOCK:
+                text = Console._format_text(text)
                 if target_name == 'stderr':
                     sys.stderr.write(text)
                     Console._console_stderr.append(text)
@@ -146,6 +164,7 @@ class Console:
 
         def writeln(self, text: str):
             """ write a line of text (and adds \\n if text does not end with \\n) """
+            text = Console._format_text(text)
             if not text.rstrip(' \t\b').endswith('\n'):
                 text += '\n'
             self.target.write(text)
@@ -153,6 +172,7 @@ class Console:
 
         def write(self, text: str):
             """ write text, ignoring newlines (does not add or remove \\n) """
+            text = Console._format_text(text)
             self.target.write(text)
             self.last_text = text
 
@@ -161,7 +181,8 @@ class Console:
             if not (self.last_source == self.source == 'c'):
                 if not last_text_endswith_newline:
                     self.target.write('\n')
-                self.target.write(self.prev_console_output.rstrip())
+                prev_console_output = Console._format_text(self.prev_console_output).rstrip()
+                self.target.write(prev_console_output)
             if self.source == 'c' and last_text_endswith_newline:
                 if self.target_name == 'stderr':
                     Console._console_stderr.clear()
@@ -169,3 +190,100 @@ class Console:
                     Console._console_stdout.clear()
             Console._last_source = self.source
             Console._LOCK.release()
+
+
+    @staticmethod
+    def test_colors():
+        """ Test the ansi color sequences and print instructions for the escape sequences """
+        with Console.LockedWriter() as w:
+            prev_enable_colors = Console.enable_colors
+            Console.enable_colors = True
+            # https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
+            w.writeln("\\033[**m  general format, ** = number or semicolon-delimited numbers")
+            w.writeln('\\033[0m   reset everything to defaults')
+            w.writeln('** = 30-37 and 90-97 are foreground colors (4-bit)')
+            w.writeln('** = 40-47 and 100-107 are background colors (4-bit)')
+            w.writeln('below you can see examples of the escape sequence and what it looks like')
+            def ansi_esc(*vals):
+                vals_str = ';'.join(str(v) for v in vals)
+                return f"\033[{vals_str}m" + f"\\033[{vals_str}m" + f"\033[0m"
+            for i in range(30, 37+1):
+                j = 97 if i < 35 else 30 # 97 = bright white fg, 30 = black fg
+                w.writeln('\t'.join([ansi_esc(i), ansi_esc(i+60), ansi_esc(i+10,j), ansi_esc(i+70,j)]))
+            w.writeln("\\033[2K - Clear Line")
+            w.writeln("\\033[<L>;<C>H OR \\033[<L>;<C>f puts the cursor at line L and column C.")
+            w.writeln("\\033[<N>A Move the cursor up N lines")
+            w.writeln("\\033[<N>B Move the cursor down N lines")
+            w.writeln("\\033[<N>C Move the cursor forward N columns")
+            w.writeln("\\033[<N>D Move the cursor backward N columns")
+            w.writeln("\\033[2J Clear the screen, move to (0,0)")
+            w.writeln("\\033[K Erase to end of line")
+            w.writeln("\\033[s Save cursor position")
+            w.writeln("\\033[u Restore cursor position")
+            w.writeln(" ")
+            w.writeln("\\033[1m  \033[1mSample Text\033[0m  Bold / increase intensity")
+            w.writeln("\\033[2m  \033[2mSample Text\033[0m  Faint / decrease intensity (rarely supported)")
+            w.writeln("\\033[3m  \033[3mSample Text\033[0m  Italic (rarely supported, sometimes treated as inverse)")
+            w.writeln("\\033[4m  \033[4mSample Text\033[0m  Underline")
+            w.writeln("\\033[5m  \033[5mSample Text\033[0m  Slow blink (less than 150 per minute)")
+            w.writeln("\\033[6m  \033[6mSample Text\033[0m  Rapid blink (rarely supported)")
+            w.writeln("\\033[7m  \033[7mSample Text\033[0m  swap foreground / background colors")
+            w.writeln("\\033[8m  \033[8mSample Text\033[0m  'conceal' (rarely supported) ")
+            w.writeln("\\033[9m  \033[9mSample Text\033[0m  strikethrough (rarely supported) ")
+            Console.enable_colors = prev_enable_colors
+
+    @staticmethod
+    def try_fix_colors_for_cmd():
+        """ If this process was spawned by cmd/powershell (only affects windows hosts),
+        this will try to set the console mode to enable ANSI escape sequences, which are
+        not supported by default but can be via a kernel32 call (or a registry flag).
+
+        This tries to
+        - Set the virtual console mode to enable escape sequences
+        - If that fails, tries to re-spawn this process in powershell (more likely to support colors)
+        """
+        if not sys.stdout.isatty() or os.name != 'nt': return
+        parent_names = {parent.name().lower() for parent in psutil.Process().parents()}
+        # print(f"console parent names: [{', '.join(parent_names)}]")
+        if 'windowsterminal.exe' in parent_names:
+            # windows terminal has proper support for ANSI escape codes
+            return
+        if 'cmd.exe' in parent_names or 'powershell.exe' in parent_names or 'conhost.exe' in parent_names:
+            try:
+                # dirty hack: call kernel32 SetConsoleMode()
+                # https://learn.microsoft.com/en-us/windows/console/setconsolemode?redirectedfrom=MSDN#ENABLE_VIRTUAL_TERMINAL_PROCESSING
+                # GetStdHandle(-11): grab conhost
+                # 7 = ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_WRAP_AT_EOL_OUTPUT | ENABLE_PROCESSED_OUTPUT
+                kernel32 = ctypes.windll.kernel32
+                kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+            except Exception:
+                Console.enable_colors = False
+                print('---- Console colors have been disabled for cmd/powershell ---')
+                print('if you want colors, run this program from Windows Terminal')
+                print('(you may have to install from Microsoft Store)')
+                if 'powershell.exe' not in parent_names:
+                    print('trying to spawn in powershell...')
+                    try:
+                        caller = os.path.abspath(sys.executable) or ''
+                        entrypoint = os.path.abspath(sys.argv[0])
+                        entrypoint_basename = os.path.basename(entrypoint)
+                        caller_program = os.path.splitext(os.path.basename(caller) or '')[0].lower()
+                        file_ext = (os.path.splitext(entrypoint)[1] or '').lower()
+                        print(f'caller: {caller}')
+                        print(f'entry : {entrypoint_basename}')
+
+                        # windows terminal (if installed): %LocalAppData%\Microsoft\WindowsApps\wt.exe
+
+                        # note: this fallback approach probably won't help
+                        # - for some goofy reason, in powershell, it only supports ansi escapes for _itself_ by default
+                        #   I read that sometimes you can cheat by doing '(.\test.exe)', not '& test.exe', but this is untested.
+                        if caller and ('python' in caller_program or 'pypy' in caller_program or file_ext in ('.py', '.py3')):
+                            p = subprocess.Popen(f'start powershell.exe -command "& """{caller}""" {entrypoint_basename}"', cwd=os.getcwd(), shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        else:
+                            p = subprocess.Popen(f'start powershell.exe -command "& """{entrypoint_basename}"""', cwd=os.getcwd(), shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                        p.wait(2)
+                        if p.returncode is None: # process didn't die, it probably spawned ok
+                            exit(0)
+                    except Exception:
+                        traceback.print_exc()

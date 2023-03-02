@@ -86,5 +86,7 @@ def main_bot():
     sys.exit(0)
 
 if __name__ == '__main__':
+    Console.try_fix_colors_for_cmd()
+    # Console.test_colors()
     # test_interactive_console()
     main_bot()

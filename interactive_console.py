@@ -11,9 +11,13 @@ from config import Config, parse_config
 from osu_irc_bot import OsuIRCBot
 
 def __get_console_prompt(insert_mode: bool = False):
+    # https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
     return (
+        '\033[38;5;254;'+'48;5;238;'+'4m' + # dark gray bg, light fg, underline
         '>> console (!q to quit)' +
-        ('*' if insert_mode else ' ') + ': '
+        ('*' if insert_mode else ' ') + ':' +
+        '\033[0m' + # reset colors
+        ' '
     )
 
 def interactive_console(bot: OsuIRCBot, cfg: Config, bot_motd_event: Event, bot_response_event: Event):
