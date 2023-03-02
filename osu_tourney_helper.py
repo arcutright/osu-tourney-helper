@@ -43,6 +43,7 @@ def main_bot():
     cfg = parse_config()
     jaraco.logging.setup(cfg)
     redirect_log(cfg.log_level)
+    Console.enable_colors = cfg.enable_console_colors
 
     # The LenientDecodingLineBuffer attempts UTF-8 but falls back to latin-1, which will avoid UnicodeDecodeError in all cases (but may produce unexpected behavior if an IRC user is using another encoding).
     irc.client.ServerConnection.buffer_class = buffer.LenientDecodingLineBuffer

@@ -69,8 +69,8 @@ class Config:
     scoremode: int = 3   # 0: score, 1: accuracy, 2: combo, 3: score v2
     always_use_nf: bool = True
     raw_commands: list[str] = field(default_factory=list)
-    # admins, players, maps
-    admins: set[str] = field(default_factory=set)
+    # referees, players, maps
+    refs: set[str] = field(default_factory=set)
     players: set[str] = field(default_factory=set)
     maps: list[MapChoice] = field(default_factory=list)
     # irc settings
@@ -85,6 +85,7 @@ class Config:
     event_delay_timeout: float = 0.5
     # debug settings
     log_level: str = 'INFO'
+    enable_console_colors: bool = True
 
 class QuoteStrippingConfigParser(configparser.ConfigParser):
     def get(self, section, option, *, raw=False, vars=None, fallback=configparser._UNSET):
@@ -255,6 +256,7 @@ def parse_config() -> Config:
         cfg.initial_channel_password = cfgparser.get('startup', 'channel_password', fallback=cfg.initial_channel_password)
     
     # [debug] section
+    cfg.enable_console_colors = cfgparser.getboolean('debug', 'enable_console_colors', fallback=cfg.enable_console_colors)
     log_level: str = cfgparser.get('debug', 'log_level', fallback='')
     if log_level and log_level.upper() in ['CRITICAL', 'FATAL', 'ERROR', 'WARN', 'WARNING', 'INFO', 'DEBUG']:
         cfg.log_level = log_level
@@ -302,13 +304,13 @@ def parse_config() -> Config:
             cfg.maps.append(map)
         pass
     
-    # [players] and [admins] sections
-    cfg.admins = set()
+    # [players] and [refs] sections
+    cfg.refs = set()
     cfg.players = set()
-    if 'admins' in cfgparser:
-        cfg.admins = set([s.strip().replace(' ', '_') for s in cfgparser['admins'] if s])
+    if 'refs' in cfgparser:
+        cfg.refs = set([s.strip().replace(' ', '_') for s in cfgparser['refs'] if s])
     if 'players' in cfgparser:
-        cfg.players = set([s.strip().replace(' ', '_') for s in cfgparser['players'] if s and s not in cfg.admins])
+        cfg.players = set([s.strip().replace(' ', '_') for s in cfgparser['players'] if s and s not in cfg.refs])
 
     # input validation
     if not cfg.username:

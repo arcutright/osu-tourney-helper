@@ -93,9 +93,9 @@ class OsuIRCBot(BaseOsuIRCBot):
             return
         for player in self.cfg.players:
             self.send_message(self.room_id, f"!mp invite {player}")
-        for admin in self.cfg.admins:
-            self.send_message(self.room_id, f"!mp invite {admin}")
-        self.send_message(self.room_id, f"!mp addref {' '.join(self.cfg.admins)}") # may need them to be in the room first...
+        for ref in self.cfg.refs:
+            self.send_message(self.room_id, f"!mp invite {ref}")
+        self.send_message(self.room_id, f"!mp addref {' '.join(self.cfg.refs)}") # may need them to be in the room first...
 
     ## ----------------------------------------------------------------------
 
@@ -158,7 +158,6 @@ class OsuIRCBot(BaseOsuIRCBot):
             Console.writeln(f"{'-'*8}  {'-'*9}  {'-'*12}  {'-'*38} {'-'*20}")
             for map in self.cfg.maps:
                 Console.writeln(f"{map.label:<8}  {map.mapid:>9}  {map.mods:<12}  {map.get_osu_link():<38}  {map.description}")
-            Console.writeln("short")
             self.bot_response_event.set()
             return
         

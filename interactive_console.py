@@ -253,6 +253,7 @@ class DummyBot:
 
 def test_interactive_console():
     cfg = parse_config()
+    Console.enable_colors = cfg.enable_console_colors
     bot_response_event = multiprocessing.Event()
     bot_motd_event = multiprocessing.Event()
     bot = DummyBot(bot_motd_event, bot_response_event)
