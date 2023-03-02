@@ -8,7 +8,7 @@ from typing import TextIO
 
 from console import Console, log
 from config import Config, parse_config
-from irc_bot import OsuIRCBot
+from osu_irc_bot import OsuIRCBot
 
 def __get_console_prompt(insert_mode: bool = False):
     return (
