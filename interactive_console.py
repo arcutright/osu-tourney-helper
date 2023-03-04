@@ -41,7 +41,7 @@ def interactive_console(bot: OsuIRCBot, cfg: Config, bot_motd_event: Event, bot_
         # loop over key presses during line input
         while True:
             ch = readkey()
-            if ch in (keycode.ENTER, keycode.ENTER_2, keycode.CR, keycode.LF):
+            if ch in (keycode.ENTER, keycode.CR, keycode.LF):
                 # current_input[::-1].index('')
                 inputs_list.append(current_input)
                 inputs_idx = len(inputs_list)
@@ -178,7 +178,7 @@ def interactive_console(bot: OsuIRCBot, cfg: Config, bot_motd_event: Event, bot_
                 # TODO: support tab-completion
                 continue
 
-            elif ch in (keycode.ESC, keycode.ESC_2):
+            elif ch in (keycode.ESC):
                 continue
 
             elif ch in keycode.__dict__.values():

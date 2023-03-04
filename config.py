@@ -11,6 +11,7 @@ import json
 import ssl
 from http.client import HTTPResponse
 from datetime import datetime, timedelta
+from typing import Union, Tuple
 import dateutil.parser
 from console import Console, log
 
@@ -31,7 +32,7 @@ class MapInfo:
     length: int
     difficulty_rating: float
     is_ranked: bool
-    last_updated: datetime | None = None
+    last_updated: "Union[datetime, None]" = None
 
 @dataclass
 class MapChoice:
@@ -40,7 +41,7 @@ class MapChoice:
     mods: str
     description: str
     """ Friendly map string, like 'artist - title [diff] (creator)' """
-    map_info: MapInfo | None = None
+    map_info: "Union[MapInfo, None]" = None
     """ All map info from public apis, if available """
 
     def get_osu_link(self):
@@ -68,11 +69,11 @@ class Config:
     teammode: int = 0  # 0: head to head, 1: tag coop, 2: team vs, 3: tag team vs
     scoremode: int = 3   # 0: score, 1: accuracy, 2: combo, 3: score v2
     always_use_nf: bool = True
-    raw_commands: list[str] = field(default_factory=list)
+    raw_commands: "list[str]" = field(default_factory=list)
     # referees, players, maps
-    refs: set[str] = field(default_factory=set)
-    players: set[str] = field(default_factory=set)
-    maps: list[MapChoice] = field(default_factory=list)
+    refs: "set[str]" = field(default_factory=set)
+    players: "set[str]" = field(default_factory=set)
+    maps: "list[MapChoice]" = field(default_factory=list)
     # irc settings
     bot_target: str = 'BanchoBot'
     server: str = 'irc.ppy.sh'
@@ -97,7 +98,7 @@ ssl_ctx = ssl.create_default_context()
 ssl_ctx.check_hostname = False
 ssl_ctx.verify_mode = ssl.CERT_NONE
 
-def parse_datetime(datestr: str) -> datetime | None:
+def parse_datetime(datestr: str) -> "Union[datetime, None]":
     try:
         return dateutil.parser.parse(datestr)
     except Exception:
@@ -139,7 +140,7 @@ def try_json_get(url: str, lower_keys=True):
 def get_many(d: dict, *keys, default=None):
     return next((d[key] for key in keys if key in d), default)
  
-def try_get_map_info(mapid: int, label: str = '') -> MapInfo | None:
+def try_get_map_info(mapid: int, label: str = '') -> "Union[MapInfo, None]":
     """Try to get a map's info (set name, diff name, etc.) from public apis"""
     try:
         ar = -1; hp = -1; od = -1; cs = -1; bpm = -1; length = -1; mode = 0
