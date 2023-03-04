@@ -40,6 +40,8 @@ def interactive_console(bot: OsuIRCBot, cfg: Config, bot_motd_event: Event, bot_
 
         # loop over key presses during line input
         while True:
+            sys.stdout.flush()
+            sys.stderr.flush()
             ch = readkey()
             if ch in (keycode.ENTER, keycode.CR, keycode.LF):
                 # current_input[::-1].index('')

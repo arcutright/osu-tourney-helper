@@ -78,18 +78,23 @@ class Console:
     
     @staticmethod
     def __console_write(target_name: str, text: str):
-        if text.endswith('\n'):
-            Console.__writeln(target_name, text, 'c')
-        else:
-            with Console._LOCK:
-                text = Console._format_text(text)
-                if target_name == 'stderr':
-                    sys.stderr.write(text)
+        with Console._LOCK:
+            text = Console._format_text(text)
+            if target_name == 'stderr':
+                sys.stderr.write(text)
+                #sys.stderr.flush()
+                if not text.endswith('\n'):
                     Console._console_stderr.append(text)
                 else:
-                    sys.stdout.write(text)
+                    Console._console_stderr.clear()
+            else:
+                sys.stdout.write(text)
+                #sys.stdout.flush()
+                if not text.endswith('\n'):
                     Console._console_stdout.append(text)
-                Console._last_source = 'c'
+                else:
+                    Console._console_stderr.clear()
+            Console._last_source = 'c'
     
     @staticmethod
     def writeln(text: str):
@@ -105,7 +110,7 @@ class Console:
 
     @staticmethod
     def _writeln_stderr(text: str):
-        Console.__writeln(sys.stderr, text, 'c')
+        Console.__writeln('stderr', text, 'c')
 
     @staticmethod
     def _write(text: str):
@@ -188,6 +193,7 @@ class Console:
                     Console._console_stderr.clear()
                 else:
                     Console._console_stdout.clear()
+            self.target.flush()
             Console._last_source = self.source
             Console._LOCK.release()
 
