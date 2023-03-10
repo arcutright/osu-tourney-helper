@@ -120,8 +120,6 @@ class OsuIRCBot(BaseOsuIRCBot):
 
     ## ----------------------------------------------------------------------
 
-    
-    
     def send_bot_command(self, content: str):
         """Sends a command or message to either the bot_target or to the current channel.
         By default, most things go to the channel if we are connected to one.
@@ -136,8 +134,10 @@ class OsuIRCBot(BaseOsuIRCBot):
         command = content.lower()
         map = None
         is_map_request = False
+        is_command = command.startswith(('/', '!'))
+        command = '' if not is_command else command[1:]
 
-        if command.startswith('/help') or command.startswith('!mp help') or command.startswith('!help'):
+        if command.startswith(('help', 'mp help')):
             Console.writeln('--- extra commands, not in bancho ---')
             Console.writeln('!stats             see joined channel stats')
             Console.writeln('!debug, !config    see the current config in the .ini file + joined channel stats')
@@ -148,8 +148,8 @@ class OsuIRCBot(BaseOsuIRCBot):
             self.send_pm(self.cfg.bot_target, content)
             return
         
-        elif command.startswith('!stats') or command.startswith('!debug') or command.startswith('!config'):
-            if command.startswith('!debug') or command.startswith('!config'):
+        elif command.startswith(('stats', 'debug', 'config')):
+            if command.startswith(('debug', 'config')):
                 Console.writeln('--- config ---')
                 pp = pprint.PrettyPrinter(indent=2)
                 Console.writeln(pp.pformat(self.cfg))
@@ -157,7 +157,7 @@ class OsuIRCBot(BaseOsuIRCBot):
             self.do_command(IRCEvent('stats', '', ''), '')
             return
         
-        elif command.startswith('!mp maplist') or command.startswith('!mp map_list'):
+        elif command.startswith(('mp maplist', 'mp map_list')):
             self.map_infos_populated_event.wait(1)
             if not self.map_infos_populated_event.is_set():
                 Console.writeln("Waiting (max 30s) for map infos to be populated (this is a one-time cost)")
@@ -169,11 +169,11 @@ class OsuIRCBot(BaseOsuIRCBot):
             self.bot_response_event.set()
             return
         
-        elif command.startswith('!mp inviteall') or command.startswith('!mp invite_all'):
+        elif command.startswith(('mp inviteall', 'mp invite_all')):
             self.invite_participants()
             return
         
-        elif command.startswith('!mp map'):
+        elif command.startswith('mp map'):
             aftermap = content[content.index('map')+4:]
             # two valid cases here. The wacky logic is to handle if map label has spaces and ends with a number
             # 1. !mp map <mapid> [<playmode>]
@@ -192,7 +192,7 @@ class OsuIRCBot(BaseOsuIRCBot):
             content = f'!mp map {mapid}{rhs}'
             is_map_request = True
 
-        if self.room_id and not command.startswith('!mp make') and not command.startswith('/'):
+        if self.room_id and not command.startswith('mp make'):
             self.send_message(self.room_id, content)
         else:
             self.send_pm(self.cfg.bot_target, content)
@@ -206,7 +206,7 @@ class OsuIRCBot(BaseOsuIRCBot):
                 self.send_message(self.room_id, ', '.join(mirrors))
 
         # no response expected for plain messages to a room
-        if not command.startswith('!') and not command.startswith('/'):
+        if not is_command:
             self.bot_response_event.set()
 
     ## ----------------------------------------------------------------------
