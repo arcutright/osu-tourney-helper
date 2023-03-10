@@ -38,6 +38,14 @@ class OsuIRCBot(BaseOsuIRCBot):
         self.room_id = ''
         self.__creating_room = False
         self.__closing_room = False
+
+    def stop(self):
+        self._stopped = True
+        try: self.close_room(warn=False)
+        except Exception: pass
+        self.disconnect()
+        self._bot_motd_timer = None
+        self._bot_response_timer = None
     
     ## ----------------------------------------------------------------------
     # room management

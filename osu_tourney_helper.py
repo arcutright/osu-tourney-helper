@@ -1,11 +1,10 @@
 import sys
 import traceback
 import ssl
-import logging
-import time
 import threading
 import multiprocessing
 from multiprocessing.synchronize import Event, Lock
+from typing import Callable
 import irc
 import irc.bot
 import irc.client
@@ -25,19 +24,29 @@ class IgnoreErrorsBuffer(buffer.DecodingLineBuffer):
 def populate_map_infos(cfg: Config, map_infos_populated_event: Event, stop_event: Event):
     map_infos_populated_event.clear()
     for map in cfg.maps:
+        stop_event.wait(0.1) # avoid being rate-limited
         if stop_event.is_set():
             break
-        time.sleep(0.1) # avoid being rate-limited
         try_populate_map_info(map)
     # in case we still got rate-limited, try again with some delay
     did_delay = False
     for map in cfg.maps:
+        if stop_event.is_set():
+            break
         if not map.map_info and map.mapid:
             if not did_delay:
-                time.sleep(2)
+                stop_event.wait(2)
+                if stop_event.is_set():
+                    break
                 did_delay = True
             try_populate_map_info(map)
     map_infos_populated_event.set()
+
+def trap_interrupt(fn: Callable, *args, **kwagrs):
+    try:
+        fn(*args, **kwagrs)
+    except KeyboardInterrupt:
+        pass
 
 def main_bot():
     cfg = parse_config()
@@ -65,8 +74,8 @@ def main_bot():
         connect_factory=connect_factory
     )
 
-    map_info_thread = threading.Thread(target=populate_map_infos, args=(cfg, map_infos_populated_event, stop_event), daemon=True, name='map_info_fetch')
-    console_thread = threading.Thread(target=interactive_console, args=(bot, cfg, bot_motd_event, bot_response_event), name='interactive_console')
+    map_info_thread = threading.Thread(target=trap_interrupt, args=(populate_map_infos, cfg, map_infos_populated_event, stop_event), daemon=True, name='map_info_fetch')
+    console_thread = threading.Thread(target=trap_interrupt, args=(interactive_console, bot, cfg, bot_motd_event, bot_response_event), name='interactive_console')
     bot_thread = threading.Thread(target=bot.start, args=(), daemon=True, name='irc_bot')
     try:
         map_info_thread.start()

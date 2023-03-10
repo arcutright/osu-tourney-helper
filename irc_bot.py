@@ -81,13 +81,15 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         self._bot_motd_timer = None
         self._bot_response_timer = None
         self._connect()
-        while not self._stopped:
-            self.reactor.process_once(timeout)
+        try:
+            while not self._stopped:
+                self.reactor.process_once(timeout)
+        except KeyboardInterrupt:
+            self.stop()
+            raise
 
     def stop(self):
         self._stopped = True
-        try: self.close_room(warn=False)
-        except Exception: pass
         self.disconnect()
         self._bot_motd_timer = None
         self._bot_response_timer = None

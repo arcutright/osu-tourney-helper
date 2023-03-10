@@ -268,7 +268,7 @@ def parse_config() -> Config:
     cfg.maps = []
     if 'maps' in cfgparser:
         for rawlabel in cfgparser['maps']:
-            mapid = cfgparser.getint("maps", rawlabel)
+            mapid = cfgparser.getint("maps", rawlabel, fallback=None)
             if mapid is None: continue
             label = rawlabel.upper().strip()
             if ('FM' in label) or ('FREE' in label) or ('FREEMOD' in label):
