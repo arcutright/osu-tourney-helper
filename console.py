@@ -93,7 +93,7 @@ class Console:
                 if not text.endswith('\n'):
                     Console._console_stdout.append(text)
                 else:
-                    Console._console_stderr.clear()
+                    Console._console_stdout.clear()
             Console._last_source = 'c'
     
     @staticmethod
