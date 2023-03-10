@@ -4,10 +4,9 @@ import re
 import logging
 import traceback
 from multiprocessing import Lock
-from typing import TextIO, Final
+from typing import Final
 import ctypes
 import subprocess
-import psutil
 
 log: Final[logging.Logger] = logging.getLogger(__name__)
 
@@ -248,13 +247,19 @@ class Console:
         - Set the virtual console mode to enable escape sequences
         - If that fails, tries to re-spawn this process in powershell (more likely to support colors)
         """
-        if not sys.stdout.isatty() or os.name != 'nt': return
-        parent_names = {parent.name().lower() for parent in psutil.Process().parents()}
+        if not sys.stdout.isatty() or os.name != 'nt':
+            return
+        try:
+            import psutil
+            parent_names = {parent.name().lower() for parent in psutil.Process().parents()}
+        except Exception:
+            parent_names = []
+
         # print(f"console parent names: [{', '.join(parent_names)}]")
         if 'windowsterminal.exe' in parent_names:
             # windows terminal has proper support for ANSI escape codes
             return
-        if 'cmd.exe' in parent_names or 'powershell.exe' in parent_names or 'conhost.exe' in parent_names:
+        if not parent_names or any(shell in parent_names for shell in ['cmd.exe', 'powershell.exe', 'conhost.exe']):
             try:
                 # dirty hack: call kernel32 SetConsoleMode()
                 # https://learn.microsoft.com/en-us/windows/console/setconsolemode?redirectedfrom=MSDN#ENABLE_VIRTUAL_TERMINAL_PROCESSING
