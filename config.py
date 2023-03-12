@@ -83,7 +83,7 @@ class Config:
     tls: bool = False
     response_timeout: float = 5.0
     motd_timeout: float = 3.0
-    event_delay_timeout: float = 0.5
+    event_delay_timeout: float = 0.8
     # debug settings
     log_level: str = 'INFO'
     enable_console_colors: bool = True

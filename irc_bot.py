@@ -1,5 +1,6 @@
 import re
 import threading
+from typing import Union
 import multiprocessing
 from multiprocessing.synchronize import Event as MpEvent, Lock as MpLock
 from more_itertools import consume, always_iterable, repeatfunc
@@ -50,17 +51,16 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
     any of its own commands.
     """
     def __init__(self, cfg: Config,
-                 bot_response_event: MpEvent = None,
-                 bot_motd_event: MpEvent = None,
-                 map_infos_populated_event: MpEvent = None,
-                 bot_event_delay: float = 0.8,
+                 bot_response_event: "Union[MpEvent, None]" = None,
+                 bot_motd_event: "Union[MpEvent, None]" = None,
+                 map_infos_populated_event: "Union[MpEvent, None]" = None,
                  **connect_params):
         server_list = [(cfg.server, cfg.port, cfg.password)] if cfg.password else [(cfg.server, cfg.port)]
         irc.bot.SingleServerIRCBot.__init__(self, server_list, nickname=cfg.nickname, realname=cfg.username, username=cfg.username, **connect_params)
         self.bot_target = cfg.bot_target or ''
         self.cfg = cfg
 
-        self.bot_event_delay = bot_event_delay or 0.8
+        self.bot_event_delay = cfg.event_delay_timeout or 0.8
         if bot_motd_event is not None: bot_motd_event.clear()
         if bot_response_event is not None: bot_response_event.clear()
         self.bot_response_event = bot_response_event if bot_response_event is not None else multiprocessing.Event()

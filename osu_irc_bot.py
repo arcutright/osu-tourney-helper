@@ -2,6 +2,7 @@ import re
 import threading
 import multiprocessing
 from multiprocessing.synchronize import Event as MpEvent, Lock as MpLock
+from typing import Union
 import pprint
 from more_itertools import consume, always_iterable, repeatfunc
 from irc.strings import lower as irc_lower
@@ -17,10 +18,9 @@ from irc_bot import BaseOsuIRCBot
 
 class OsuIRCBot(BaseOsuIRCBot):
     def __init__(self, cfg: Config,
-                 bot_response_event: MpEvent = None,
-                 bot_motd_event: MpEvent = None,
-                 map_infos_populated_event: MpEvent = None,
-                 bot_event_delay: float = 0.8,
+                 bot_response_event: "Union[MpEvent, None]" = None,
+                 bot_motd_event: "Union[MpEvent, None]" = None,
+                 map_infos_populated_event: "Union[MpEvent, None]" = None,
                  **connect_params):
         BaseOsuIRCBot.__init__(
             self,
@@ -28,7 +28,6 @@ class OsuIRCBot(BaseOsuIRCBot):
             bot_response_event=bot_response_event,
             bot_motd_event=bot_motd_event,
             map_infos_populated_event=map_infos_populated_event,
-            bot_event_delay=bot_event_delay,
             **connect_params
         )
         self.channel = cfg.initial_channel or ''
@@ -203,7 +202,7 @@ class OsuIRCBot(BaseOsuIRCBot):
             mirrors = map.get_mirror_links()
             if mirrors:
                 self.send_message(self.room_id, "------ mirror links -------")
-                self.send_message(self.room_id, ', '.join(mirrors))
+                self.send_message(self.room_id, ' | '.join(mirrors))
 
         # no response expected for plain messages to a room
         if not is_command:

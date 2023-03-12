@@ -3,8 +3,8 @@ import sys
 import re
 import logging
 import traceback
-from multiprocessing import Lock
-from typing import Final
+from multiprocessing import Lock, RLock
+from typing import Final, Callable, Union
 import ctypes
 import subprocess
 
@@ -42,33 +42,59 @@ class Console:
     is re-written. This makes it feel like the conosle prompt "floats" at 
     the bottom of the console.
     """
-    _LOCK = Lock()
+    _LOCK = RLock()
     _last_source = '' # blank = not the console, 'c' = the console
-    _console_stdout = []
-    _console_stderr = []
+    _console_stdout: "list[str]" = []
+    _console_stderr: "list[str]" = []
     enable_colors = True
     
     @staticmethod
     def flush():
+        """Flush sys.stdout with lock"""
         with Console._LOCK:
             sys.stdout.flush()
 
     @staticmethod
     def flush_stderr():
+        """Flush sys.stderr with lock"""
         with Console._LOCK:
             sys.stderr.flush()
             
     # https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
-    # reset color: \033[0m
+    # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+    # reset all modes: \033[0m
     # \033[31;1;4   31=red, 1=bold, 4=underline
-    __ansi_escape_regex = re.compile(r"\033\[\d+(?:;\d+)*m")
+    __ansi_color_regex = re.compile(r"\033\[\d+(?:;\d+)*[mM]")
+    __ansi_escape_regex = re.compile(r"\033\[\d+(?:;\d+)*[a-ln-zA-LN-Z]")
 
+    @staticmethod
+    def remove_escapes(text: str):
+        """Removes ansi escape sequences (besides colors) and unprintable zero-width chars"""
+        # \a: terminal bell
+        # \b: backspace
+        # \v: vertical tab
+        # \0: null
+        # \177: delete
+        return (Console.__ansi_escape_regex.sub('', text)
+                .replace('\a', '').replace('\b', '').replace('\r', '').replace('\v', '')
+                .replace('\0', '').replace('\177', ''))
+    
+    @staticmethod
+    def remove_escapes_and_colors(text: str):
+        """Removes ansi escape sequences (besides colors) and unprintable zero-width chars"""
+        return Console.__ansi_color_regex.sub('', Console.remove_escapes(text))
+
+    @staticmethod
+    def len(text: str):
+        """Length of str, ignoring ansi escape sequences and unprintable zero-width chars"""
+        return len(Console.remove_escapes_and_colors(text))
+    
     @staticmethod
     def _format_text(text: str):
         if Console.enable_colors:
             return text
         else:
-            return Console.__ansi_escape_regex.sub('', text)
+            return Console.__ansi_color_regex.sub('', text)
 
     @staticmethod
     def __writeln(target_name: str, line: str, source: str = ''):
@@ -80,19 +106,26 @@ class Console:
         with Console._LOCK:
             text = Console._format_text(text)
             if target_name == 'stderr':
-                sys.stderr.write(text)
-                #sys.stderr.flush()
-                if not text.endswith('\n'):
-                    Console._console_stderr.append(text)
-                else:
-                    Console._console_stderr.clear()
+                target = sys.stderr
+                console_buffer = Console._console_stderr
             else:
-                sys.stdout.write(text)
-                #sys.stdout.flush()
-                if not text.endswith('\n'):
-                    Console._console_stdout.append(text)
-                else:
-                    Console._console_stdout.clear()
+                target = sys.stdout
+                console_buffer = Console._console_stdout
+
+            target.write(text)
+            #target.flush()
+            if not text.endswith('\n'):
+                escaped_text = Console.remove_escapes(text)
+                console_buffer.append(escaped_text)
+            else:
+                console_buffer.clear()
+            
+            # try to handle some ansi control sequences
+            bufstr = ''.join(console_buffer).lower()
+            # i = max(bufstr.rfind('\033k'), bufstr.rfind('\0330k')) # clear from cursor to end of line
+            if bufstr.endswith(('\0331k','\0332k')): # clear to end of line, clear whole line
+                console_buffer.clear()
+                                     
             Console._last_source = 'c'
     
     @staticmethod
@@ -139,16 +172,17 @@ class Console:
                                ends with a \\n and then will write out the console prompt (+ any in-progress user input)
             """
             self.target_name = target_name
-            self.target = sys.stderr if target_name == 'stderr' else sys.stdout
+            if target_name == 'stderr':
+                self.target = sys.stderr
+                self.console_buffer = Console._console_stderr
+            else:
+                self.target = sys.stdout
+                self.console_buffer = Console._console_stdout
             self.source = source
             self.prev_console_output = ''
             self.last_source = ''
             self.last_text = ''
             self.wrote_newline = False
-        
-        @staticmethod
-        def __count_console_chars(line: str):
-            return sum(-1 if ch == '\b' else (0 if ch in ('\n', '\r') else 1) for ch in line)
 
         def __enter__(self):
             Console._LOCK.acquire()
@@ -159,11 +193,13 @@ class Console:
                 self.prev_console_output = ''.join(Console._console_stderr)
             else:
                 self.prev_console_output = ''.join(Console._console_stdout)
-            n = len(self.prev_console_output)
-            if n > 0:
+            self.prev_console_output_len = Console.len(self.prev_console_output)
+            if self.prev_console_output_len > 0:
+                # TODO: this won't work for multi-line console messages
                 # erase the conosle output by overwriting it with space chars
-                self.target.write(' '*n)
+                # self.target.write(' '*n)
                 self.target.write('\r')
+                self.target.write('\033[2K') # clear line
             return self
 
         def writeln(self, text: str):
@@ -173,28 +209,37 @@ class Console:
                 text += '\n'
             self.target.write(text)
             self.last_text = text
+            if self.source == 'c':
+                self.console_buffer.clear()
 
         def write(self, text: str):
             """ write text, ignoring newlines (does not add or remove \\n) """
             text = Console._format_text(text)
             self.target.write(text)
             self.last_text = text
+            if self.source == 'c':
+                if not text.endswith('\n'):
+                    escaped_text = Console.remove_escapes(text)
+                    self.console_buffer.append(escaped_text)
+                else:
+                    self.console_buffer.clear()
 
         def __exit__(self, *args):
-            last_text_endswith_newline = self.last_text.rstrip(' \t\b').endswith('\n')
-            if not (self.last_source == self.source == 'c'):
-                if not last_text_endswith_newline:
-                    self.target.write('\n')
-                prev_console_output = Console._format_text(self.prev_console_output).rstrip()
-                self.target.write(prev_console_output)
-            if self.source == 'c' and last_text_endswith_newline:
-                if self.target_name == 'stderr':
-                    Console._console_stderr.clear()
-                else:
-                    Console._console_stdout.clear()
-            self.target.flush()
-            Console._last_source = self.source
-            Console._LOCK.release()
+            try:
+                last_text_endswith_newline = self.last_text.rstrip(' \t\b').endswith('\n')
+                if not (self.last_source == self.source == 'c'):
+                    if not last_text_endswith_newline:
+                        self.target.write('\n')
+                    if self.prev_console_output_len > 0:
+                        prev_console_output = Console._format_text(self.prev_console_output).rstrip()
+                        self.target.write(prev_console_output)
+                if self.source == 'c':
+                    if last_text_endswith_newline:
+                        self.console_buffer.clear()
+                self.target.flush()
+            finally:
+                Console._last_source = self.source
+                Console._LOCK.release()
 
 
     @staticmethod
@@ -209,22 +254,23 @@ class Console:
             w.writeln('** = 30-37 and 90-97 are foreground colors (4-bit)')
             w.writeln('** = 40-47 and 100-107 are background colors (4-bit)')
             w.writeln('below you can see examples of the escape sequence and what it looks like')
-            def ansi_esc(*vals):
+            def ansi_color(*vals):
                 vals_str = ';'.join(str(v) for v in vals)
                 return f"\033[{vals_str}m" + f"\\033[{vals_str}m" + f"\033[0m"
             for i in range(30, 37+1):
                 j = 97 if i < 35 else 30 # 97 = bright white fg, 30 = black fg
-                w.writeln('\t'.join([ansi_esc(i), ansi_esc(i+60), ansi_esc(i+10,j), ansi_esc(i+70,j)]))
-            w.writeln("\\033[2K - Clear Line")
-            w.writeln("\\033[<L>;<C>H OR \\033[<L>;<C>f puts the cursor at line L and column C.")
-            w.writeln("\\033[<N>A Move the cursor up N lines")
-            w.writeln("\\033[<N>B Move the cursor down N lines")
-            w.writeln("\\033[<N>C Move the cursor forward N columns")
-            w.writeln("\\033[<N>D Move the cursor backward N columns")
-            w.writeln("\\033[2J Clear the screen, move to (0,0)")
-            w.writeln("\\033[K Erase to end of line")
-            w.writeln("\\033[s Save cursor position")
-            w.writeln("\\033[u Restore cursor position")
+                w.writeln('\t'.join([ansi_color(i), ansi_color(i+60), ansi_color(i+10,j), ansi_color(i+70,j)]))
+            w.writeln("\\033[<L>;<C>H OR \\033[<L>;<C>f  puts the cursor at line L and column C.")
+            w.writeln("\\033[<N>A  Move the cursor up N lines")
+            w.writeln("\\033[<N>B  Move the cursor down N lines")
+            w.writeln("\\033[<N>C  Move the cursor forward N columns")
+            w.writeln("\\033[<N>D  Move the cursor backward N columns")
+            w.writeln("\\033[2J  Clear the screen, move to (0,0)")
+            w.writeln("\\033[K   Erase from cursor to end of line (equiv to \\033[0K)")
+            w.writeln("\\033[1K  Erase line from beginning to current cursor")
+            w.writeln("\\033[2K  Clear line")
+            w.writeln("\\033[s   Save cursor position")
+            w.writeln("\\033[u   Restore cursor position")
             w.writeln(" ")
             w.writeln("\\033[1m  \033[1mSample Text\033[0m  Bold / increase intensity")
             w.writeln("\\033[2m  \033[2mSample Text\033[0m  Faint / decrease intensity (rarely supported)")
