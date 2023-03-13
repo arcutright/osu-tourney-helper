@@ -4,11 +4,11 @@ import re
 import logging
 import traceback
 from multiprocessing import Lock, RLock
-from typing import Final, Callable, Union
+from typing import Final, Callable, Union, TextIO
 import subprocess
 import shutil
 
-log: Final[logging.Logger] = logging.getLogger(__name__)
+log: "Final[logging.Logger]" = logging.getLogger(__name__)
 
 # -------------------------------------------------------------
 #  wrappers to enable "the console to stay at the bottom"
@@ -17,22 +17,34 @@ log: Final[logging.Logger] = logging.getLogger(__name__)
 class ConsoleStreamHandler(logging.StreamHandler):
     def __init__(self):
         logging.StreamHandler.__init__(self)
-        self.stream = None
+        self.stream = TextIO() # dummy stream target like /dev/null
+        self.msg_colors = {
+            logging.NOTSET: '\033[38;5;45m', # blue
+            logging.DEBUG: '\033[38;5;45m', # blue
+            logging.INFO: '\033[38;5;247m', # gray
+            logging.WARNING: '\033[38;5;227m', # yellow
+            logging.ERROR: '\033[38;5;160m', # red
+            logging.CRITICAL: '\033[38;5;196m', # bright red
+        }
+        self.reset_color = '\033[39m' # 39m = reset foreground color only
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            Console.writeln(f"(r) {self.format(record)}")
+            color = self.msg_colors.get(record.levelno, '')
+            Console.writeln(f"{color}{self.format(record).rstrip()}{self.reset_color}")
         except Exception:
-            Console.writeln(f"(r2) {traceback.format_exc()}")
+            color = '\033[38;5;165m' # purple-ish
+            Console.writeln(f"{color}Unhandled exception! {traceback.format_exc().rstrip()}{self.reset_color}")
 
-def redirect_log(level=logging.INFO):
-    """ Redirect the log target in this file to go through the Conosle wrappers """
+def setup_logging(level=logging.INFO):
+    """ Redirect the log target in this file to go through the Conosle wrappers and color-code them """
     stdoutHandler = ConsoleStreamHandler()
     stdoutHandler.setLevel(level)
-    #logging.basicConfig(level=level,
-    #                    format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s")
-    log.handlers.clear()
-    log.addHandler(stdoutHandler)
+    logging.basicConfig(handlers=[stdoutHandler],
+                        level=level,
+                        format="%(asctime)s [%(levelname)s] %(module)s - %(funcName)s: %(message)s",
+                        datefmt='%Y-%m-%d %H:%M:%S')
+                        # format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s")
 
 
 class Console:

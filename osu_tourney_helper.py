@@ -9,15 +9,14 @@ import irc
 import irc.bot
 import irc.client
 import irc.connection
-import jaraco.logging
-from jaraco.stream import buffer
+import jaraco.stream.buffer
 
-from console import Console, log, redirect_log
+from console import Console, log, setup_logging
 from config import MapChoice, Config, parse_config, try_populate_map_info
 from interactive_console import InteractiveConsole, test_interactive_console
 from osu_irc_bot import OsuIRCBot
 
-class IgnoreErrorsBuffer(buffer.DecodingLineBuffer):
+class IgnoreErrorsBuffer(jaraco.stream.buffer.DecodingLineBuffer):
     def handle_exception(self):
         pass
 
@@ -50,12 +49,12 @@ def trap_interrupt(fn: Callable, *args, **kwagrs):
 
 def main_bot():
     cfg = parse_config()
-    jaraco.logging.setup(cfg)
-    redirect_log(cfg.log_level)
+    setup_logging(cfg.log_level)
     Console.enable_colors = cfg.enable_console_colors
 
     # The LenientDecodingLineBuffer attempts UTF-8 but falls back to latin-1, which will avoid UnicodeDecodeError in all cases (but may produce unexpected behavior if an IRC user is using another encoding).
-    irc.client.ServerConnection.buffer_class = buffer.LenientDecodingLineBuffer
+    # or use IgnoreErrorsBuffer to ignore all errors
+    irc.client.ServerConnection.buffer_class = jaraco.stream.buffer.LenientDecodingLineBuffer
 
     if cfg.tls:
         connect_factory = irc.connection.Factory(wrapper=ssl.wrap_socket)

@@ -2,8 +2,7 @@ import re
 import threading
 from typing import Union
 import multiprocessing
-from multiprocessing.synchronize import Event as MpEvent, Lock as MpLock
-from more_itertools import consume, always_iterable, repeatfunc
+from multiprocessing.synchronize import Event as MpEvent
 import irc.bot
 import irc.events
 from irc.strings import lower as irc_lower

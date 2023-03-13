@@ -14,7 +14,7 @@ from osu_irc_bot import OsuIRCBot
 
 class InteractiveConsole:
     def __init__(self,
-                 bot: OsuIRCBot,
+                 bot: "Union[OsuIRCBot, DummyBot]",
                  cfg: Config,
                  bot_motd_event: "Union[Event, None]" = None,
                  bot_response_event: "Union[Event, None]" = None,

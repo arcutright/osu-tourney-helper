@@ -4,15 +4,16 @@ import traceback
 import argparse
 import configparser
 import logging
-from dataclasses import dataclass, field
-import jaraco.logging
-import urllib.error, urllib.request, urllib.response, urllib.parse
 import json
 import ssl
+from dataclasses import dataclass, field
+from typing import Union, Tuple
 from http.client import HTTPResponse
 from datetime import datetime, timedelta
-from typing import Union, Tuple
+import urllib.error, urllib.request, urllib.response, urllib.parse
 import dateutil.parser
+import jaraco.logging
+
 from console import Console, log
 
 @dataclass
