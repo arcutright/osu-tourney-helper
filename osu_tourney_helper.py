@@ -91,7 +91,6 @@ def main_bot():
         console_thread.join()
     except irc.client.ServerConnectionError as ex:
         traceback.print_exc()
-        sys.exit(1)
     except Exception as ex:
         traceback.print_exc()
     finally:
@@ -100,10 +99,13 @@ def main_bot():
         bot_thread.join()
         map_info_thread.join()
         console_thread.join(2) # if it's hanging on readchar() it can't easily be killed
-    sys.exit(0)
 
 if __name__ == '__main__':
-    Console.try_fix_colors_for_cmd()
-    # Console.test_colors()
-    # test_interactive_console()
-    main_bot()
+    try:
+        Console.try_patch_stdin_stdout_behavior()
+        # Console.test_colors()
+        # test_interactive_console()
+        main_bot()
+    finally:
+        Console.try_restore_stdin_stdout_behavior()
+    sys.exit(0)
