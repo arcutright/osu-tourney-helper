@@ -7,6 +7,7 @@ from multiprocessing import Lock, RLock
 from typing import Final, Callable, Union
 import ctypes
 import subprocess
+import shutil
 
 log: Final[logging.Logger] = logging.getLogger(__name__)
 
@@ -47,6 +48,38 @@ class Console:
     _console_stdout: "list[str]" = []
     _console_stderr: "list[str]" = []
     enable_colors = True
+    # callbacks
+    get_console_stdout: "Union[Callable[[],list[str]], None]" = None
+    """Returns `list(str)`: the console prompt + user input on stdin as char array"""
+    get_console_stderr: "Union[Callable[[],list[str]], None]" = None
+    """Returns `list(str)`: the console prompt + user input on stderr as char array"""
+    get_console_cursor_offset: "Union[Callable[[],int], None]" = None
+    """Returns `int`: the position of cursor relative to the start of the console prompt + user input (including offset due to console propmt)"""
+    
+    @staticmethod
+    def _get_console_stdout():
+        if callable(Console.get_console_stdout):
+            stdout = Console.get_console_stdout()
+        else:
+            stdout = Console._console_stdout
+        return Console.remove_escapes(''.join(stdout))
+    
+    @staticmethod
+    def _get_console_stderr():
+        if callable(Console.get_console_stderr):
+            stderr = Console.get_console_stderr()
+        else:
+            stderr = Console._console_stderr
+        return Console.remove_escapes(''.join(stderr))
+
+    @staticmethod
+    def _get_console_cursor_offset():
+        if callable(Console.get_console_cursor_offset):
+            return Console.get_console_cursor_offset()
+        
+        # estimate: assume we're at the end of the console stdout
+        console_output = Console._get_console_stdout()
+        return Console.len(console_output)
     
     @staticmethod
     def flush():
@@ -90,8 +123,35 @@ class Console:
         return len(Console.remove_escapes_and_colors(text))
     
     @staticmethod
+    def get_cursor_pos():
+        """Returns (column#, line#) of current cursor pos in the terminal (note this should never return col=0, only col=1). \n
+        Returns (-1, -1) if there was some problem.
+        """
+        with Console._LOCK:
+            sys.stdout.write("\033[6n") # reports as ESC[#;#R
+            sys.stdout.flush()
+            resp = []
+            ch = ''
+            l = 0
+            while l < 15: # sanity limit in case of problems
+                ch = sys.stdin.read(1)
+                if ch == 'R':
+                    break
+                resp.append(ch)
+                l += 1
+            respstr = ''.join(resp[2:])
+            idx = respstr.find(';')
+            if idx == -1:
+                return (-1, -1)
+            row = int(respstr[:idx])
+            col = int(respstr[idx+1:])
+            return col, row
+
+    @staticmethod
     def _format_text(text: str):
-        if Console.enable_colors:
+        if not text:
+            return ''
+        elif Console.enable_colors:
             return text
         else:
             return Console.__ansi_color_regex.sub('', text)
@@ -111,9 +171,23 @@ class Console:
             else:
                 target = sys.stdout
                 console_buffer = Console._console_stdout
+            
+            if Console._last_source != 'c':
+                bufstr = ''.join(console_buffer)
+                if Console.len(bufstr) > 0:
+                    # rewrite the prev console buffer on a new line
+                    target.write('\n')
+                    target.write(bufstr)
+                else:
+                    # move to a new line if we aren't at the start of a line
+                    (col, row) = Console.get_cursor_pos()
+                    if col > 1:
+                        target.write('\n')
 
             target.write(text)
             #target.flush()
+
+            # update buffer
             if not text.endswith('\n'):
                 escaped_text = Console.remove_escapes(text)
                 console_buffer.append(escaped_text)
@@ -151,6 +225,78 @@ class Console:
     @staticmethod
     def _write_stderr(text: str):
         Console.__console_write('stderr', text)
+
+    @staticmethod
+    def erase_console_output(target_name = 'stdout'):
+        """Erase all of the output that was written to the console target"""
+        with Console._LOCK:
+            if Console._last_source != 'c':
+                return
+            if target_name == 'stderr':
+                console_output = Console._get_console_stderr()
+                target = sys.stderr
+            else:
+                console_output = Console._get_console_stdout()
+                target = sys.stdout
+            console_output_len = Console.len(console_output)
+            if console_output_len > 0:
+                # move to start of console output
+                cursor_offset = Console._get_console_cursor_offset()
+                Console.move_cursor_left(cursor_offset)
+                # erase all console output
+                (maxcols, maxrows) = shutil.get_terminal_size()
+                num_lines = 1 + console_output_len // maxcols # total number of lines taken up by console output
+                for i in range(num_lines, 0, -1):
+                    target.write('\r') # go to beginning of line
+                    target.write('\033[2K') # erase line
+                    if i > 1:
+                        target.write('\033[1A') # up 1 line
+
+    @staticmethod
+    def move_cursor_left(n: int, target_name='stdout'):
+        """Move console cursor left `n` positions, wrapping up lines if needed. \n
+        Note this does not keep track of the cursor, so it will go 'out of bounds' if you ask it to.
+        """
+        if n == 0:
+            return
+        elif n < 0: 
+            return Console.move_cursor_right(-n, target_name)
+        with Console._LOCK:
+            target = sys.stderr if target_name == 'stderr' else sys.stdout
+            (maxcols, maxrows) = shutil.get_terminal_size()
+            (col, row) = Console.get_cursor_pos()
+            nr, nc = divmod(n, maxcols)
+            dest_row = row - nr
+            dest_col = col - nc
+            if dest_col < 1: # leftmost column = 1, not 0
+                dest_row -= 1
+                dest_col += maxcols
+            dest_row = max(1, dest_row)
+            dest_col = max(1, dest_col)
+            target.write(f"\033[{dest_row};{dest_col}H") # move cursor to final row of console output
+
+    @staticmethod
+    def move_cursor_right(n: int, target_name='stdout'):
+        """Move console cursor right `n` positions, wrapping down lines if needed. \n
+        Note this does not keep track of the cursor, so it will go 'out of bounds' if you ask it to.
+        """
+        if n == 0:
+            return
+        elif n < 0: 
+            return Console.move_cursor_left(-n, target_name)
+        with Console._LOCK:
+            target = sys.stderr if target_name == 'stderr' else sys.stdout
+            (maxcols, maxrows) = shutil.get_terminal_size()
+            (col, row) = Console.get_cursor_pos()
+            nr, nc = divmod(n, maxcols)
+            dest_row = row + nr
+            dest_col = col + nc
+            if dest_col > maxcols:
+                dest_row += 1
+                dest_col -= maxcols
+            dest_row = max(1, dest_row)
+            dest_col = max(1, dest_col)
+            target.write(f"\033[{dest_row};{dest_col}H") # move cursor to final row of console output
 
 
     class LockedWriter(object):
@@ -190,16 +336,10 @@ class Console:
             if self.last_source == self.source == 'c':
                 return self
             if self.target_name == 'stderr':
-                self.prev_console_output = ''.join(Console._console_stderr)
+                self.prev_console_output = Console._get_console_stderr()
             else:
-                self.prev_console_output = ''.join(Console._console_stdout)
-            self.prev_console_output_len = Console.len(self.prev_console_output)
-            if self.prev_console_output_len > 0:
-                # TODO: this won't work for multi-line console messages
-                # erase the conosle output by overwriting it with space chars
-                # self.target.write(' '*n)
-                self.target.write('\r')
-                self.target.write('\033[2K') # clear line
+                self.prev_console_output = Console._get_console_stdout()
+            Console.erase_console_output(self.target_name)
             return self
 
         def writeln(self, text: str):
@@ -230,8 +370,8 @@ class Console:
                 if not (self.last_source == self.source == 'c'):
                     if not last_text_endswith_newline:
                         self.target.write('\n')
-                    if self.prev_console_output_len > 0:
-                        prev_console_output = Console._format_text(self.prev_console_output).rstrip()
+                    prev_console_output = Console._format_text(self.prev_console_output).rstrip()
+                    if Console.len(prev_console_output) > 0:
                         self.target.write(prev_console_output)
                 if self.source == 'c':
                     if last_text_endswith_newline:
@@ -249,11 +389,12 @@ class Console:
             prev_enable_colors = Console.enable_colors
             Console.enable_colors = True
             # https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
+            # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
             w.writeln("\\033[**m  general format, ** = number or semicolon-delimited numbers")
             w.writeln('\\033[0m   reset everything to defaults')
             w.writeln('** = 30-37 and 90-97 are foreground colors (4-bit)')
             w.writeln('** = 40-47 and 100-107 are background colors (4-bit)')
-            w.writeln('below you can see examples of the escape sequence and what it looks like')
+            w.writeln('below you can see examples of the 4-bit color escape sequences')
             def ansi_color(*vals):
                 vals_str = ';'.join(str(v) for v in vals)
                 return f"\033[{vals_str}m" + f"\\033[{vals_str}m" + f"\033[0m"
@@ -263,14 +404,16 @@ class Console:
             w.writeln("\\033[<L>;<C>H OR \\033[<L>;<C>f  puts the cursor at line L and column C.")
             w.writeln("\\033[<N>A  Move the cursor up N lines")
             w.writeln("\\033[<N>B  Move the cursor down N lines")
-            w.writeln("\\033[<N>C  Move the cursor forward N columns")
-            w.writeln("\\033[<N>D  Move the cursor backward N columns")
+            w.writeln("\\033[<N>C  Move the cursor right N columns")
+            w.writeln("\\033[<N>D  Move the cursor left N columns")
+            w.writeln("\\033[<N>E  Move the cursor down N lines, to beginning of line")
+            w.writeln("\\033[<N>F  Move the cursor up N lines, to beginning of line")
             w.writeln("\\033[2J  Clear the screen, move to (0,0)")
             w.writeln("\\033[K   Erase from cursor to end of line (equiv to \\033[0K)")
             w.writeln("\\033[1K  Erase line from beginning to current cursor")
             w.writeln("\\033[2K  Clear line")
-            w.writeln("\\033[s   Save cursor position")
-            w.writeln("\\033[u   Restore cursor position")
+            w.writeln("\\033[s   Save cursor position (non-standard, may also be '\\033 7')")
+            w.writeln("\\033[u   Restore cursor position (non-standard, may also be '\\033 8')")
             w.writeln(" ")
             w.writeln("\\033[1m  \033[1mSample Text\033[0m  Bold / increase intensity")
             w.writeln("\\033[2m  \033[2mSample Text\033[0m  Faint / decrease intensity (rarely supported)")

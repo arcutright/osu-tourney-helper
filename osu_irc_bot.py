@@ -1,10 +1,7 @@
-import re
-import threading
 import multiprocessing
-from multiprocessing.synchronize import Event as MpEvent, Lock as MpLock
+from multiprocessing.synchronize import Event as MpEvent
 from typing import Union
 import pprint
-from more_itertools import consume, always_iterable, repeatfunc
 from irc.strings import lower as irc_lower
 from irc.client import (
     Connection as IRCConnection,

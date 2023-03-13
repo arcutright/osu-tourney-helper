@@ -3,7 +3,7 @@ import traceback
 import ssl
 import threading
 import multiprocessing
-from multiprocessing.synchronize import Event, Lock
+from multiprocessing.synchronize import Event
 from typing import Callable
 import irc
 import irc.bot
@@ -14,7 +14,7 @@ from jaraco.stream import buffer
 
 from console import Console, log, redirect_log
 from config import MapChoice, Config, parse_config, try_populate_map_info
-from interactive_console import interactive_console, test_interactive_console
+from interactive_console import InteractiveConsole, test_interactive_console
 from osu_irc_bot import OsuIRCBot
 
 class IgnoreErrorsBuffer(buffer.DecodingLineBuffer):
@@ -73,9 +73,16 @@ def main_bot():
         map_infos_populated_event=map_infos_populated_event,
         connect_factory=connect_factory
     )
+    iconsole = InteractiveConsole(
+        bot,
+        cfg,
+        bot_motd_event=bot_motd_event,
+        bot_response_event=bot_response_event,
+        stop_event=stop_event
+    )
 
     map_info_thread = threading.Thread(target=trap_interrupt, args=(populate_map_infos, cfg, map_infos_populated_event, stop_event), daemon=True, name='map_info_fetch')
-    console_thread = threading.Thread(target=trap_interrupt, args=(interactive_console, bot, cfg, bot_motd_event, bot_response_event), name='interactive_console')
+    console_thread = threading.Thread(target=trap_interrupt, args=(iconsole.main_loop, ), name='interactive_console')
     bot_thread = threading.Thread(target=bot.start, args=(), daemon=True, name='irc_bot')
     try:
         map_info_thread.start()
