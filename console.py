@@ -60,6 +60,8 @@ class Console:
     _console_stderr: "list[str]" = []
     enable_colors = True
     # callbacks
+    get_console_prompt: "Union[Callable[[],list[str]], None]" = None
+    """Returns `list(str)`: the console prompt as char array"""
     get_console_stdout: "Union[Callable[[],list[str]], None]" = None
     """Returns `list(str)`: the console prompt + user input on stdin as char array"""
     get_console_stderr: "Union[Callable[[],list[str]], None]" = None
@@ -67,6 +69,14 @@ class Console:
     get_console_cursor_offset: "Union[Callable[[],int], None]" = None
     """Returns `int`: the position of cursor relative to the start of the console prompt + user input (including offset due to console propmt)"""
     
+    @staticmethod
+    def _get_console_prompt():
+        if callable(Console.get_console_prompt):
+            propmt = Console.get_console_prompt()
+        else:
+            propmt = Console._console_stdout # ?
+        return Console.remove_escapes(''.join(propmt))
+
     @staticmethod
     def _get_console_stdout():
         if callable(Console.get_console_stdout):
@@ -259,11 +269,15 @@ class Console:
                 # erase all console output
                 (maxcols, maxrows) = shutil.get_terminal_size()
                 num_lines = 1 + console_output_len // maxcols # total number of lines taken up by console output
-                for i in range(num_lines, 0, -1):
+                for i in range(num_lines, 1, -1):
                     target.write('\r') # go to beginning of line
                     target.write('\033[2K') # erase line
-                    if i > 1:
-                        target.write('\033[1A') # up 1 line
+                    target.write('\033[1A') # up 1 line
+            # erase first line
+            target.write('\r') # go to beginning of line
+            target.write('\033[2K') # erase line
+            target.write('\033[0m') # reset all modes
+            # target.flush()
 
     @staticmethod
     def move_cursor_left(n: int, target_name='stdout'):
@@ -351,7 +365,7 @@ class Console:
             if self.target_name == 'stderr':
                 self.prev_console_output = Console._get_console_stderr()
             else:
-                self.prev_console_output = Console._get_console_stdout()
+                self.prev_console_output = Console._get_console_stdout() or Console._get_console_prompt()
             Console.erase_console_output(self.target_name)
             return self
 
@@ -378,20 +392,22 @@ class Console:
                     self.console_buffer.clear()
 
         def __exit__(self, *args):
+            rewrote_console_output = False
             try:
                 last_text_endswith_newline = self.last_text.rstrip(' \t\b').endswith('\n')
                 if not (self.last_source == self.source == 'c'):
                     if not last_text_endswith_newline:
                         self.target.write('\n')
-                    prev_console_output = Console._format_text(self.prev_console_output).rstrip()
+                    prev_console_output = Console._format_text(self.prev_console_output).rstrip('\n')
                     if Console.len(prev_console_output) > 0:
                         self.target.write(prev_console_output)
+                        rewrote_console_output = True
                 if self.source == 'c':
                     if last_text_endswith_newline:
                         self.console_buffer.clear()
                 self.target.flush()
             finally:
-                Console._last_source = self.source
+                Console._last_source = 'c' if rewrote_console_output else self.source
                 Console._LOCK.release()
 
 

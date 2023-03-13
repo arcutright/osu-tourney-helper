@@ -25,6 +25,7 @@ class InteractiveConsole:
         self.bot_motd_event = bot_motd_event
         self.bot_response_event = bot_response_event
         self.stop_event = stop_event if stop_event is not None else multiprocessing.Event()
+        self._stopped = False
 
         self.insert_mode = False
         self.inputs_list: "list[list[str]]" = []
@@ -38,7 +39,7 @@ class InteractiveConsole:
         self.console_prompt_len = Console.len(self.console_prompt)
 
     @staticmethod
-    def __get_console_prompt(insert_mode: bool = False):
+    def __get_console_prompt(insert_mode: bool = False) -> str:
         # https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
         # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
         return (
@@ -49,8 +50,9 @@ class InteractiveConsole:
             ': '
         )
     
-    def get_console_prompt(self):
+    def get_console_prompt(self) -> str:
         """Returns the console prompt message, and updates `self.console_propmt` and `self.console_prompt_len`"""
+        if self._stopped: return ''
         self.console_prompt = InteractiveConsole.__get_console_prompt(self.insert_mode)
         self.console_prompt_len = Console.len(self.console_prompt)
         return self.console_prompt
@@ -128,7 +130,11 @@ class InteractiveConsole:
 
     def main_loop(self):
         if self.bot_motd_event is not None:
-            self.bot_motd_event.wait()
+            self.bot_motd_event.wait(self.cfg.response_timeout)
+        if self.cfg.room_name and self.cfg.room_password is not None:
+            self.bot_response_event.wait(self.cfg.response_timeout) # wait until we join the room
+
+        self._stopped = False
         Console.flush()
         Console.flush_stderr()
         Console.get_console_stdout = lambda: \
@@ -136,13 +142,20 @@ class InteractiveConsole:
                                         else [self.get_console_prompt(), *self.current_input]
         Console.get_console_stderr = lambda: []
         Console.get_console_cursor_offset = lambda: self.current_input_idx + self.console_prompt_len
+        Console.get_console_prompt = lambda: '' if self._stopped else self.get_console_prompt()
         
         (self.maxcols, self.maxrows) = shutil.get_terminal_size()
 
         # loop over lines of input
         while not self.stop_event.is_set():
             self.console_prompt = self.get_console_prompt()
-            Console._write(self.console_prompt)
+            msg = (
+                '\033[0m' + # reset all modes
+                '\r' + # go to beginning of line
+                '\033[2K' + # erase line
+                self.console_prompt
+            )
+            Console._write(msg)
             self.current_input.clear()
             self.current_input_idx = 0
             self.prev_input_idx = 0
@@ -153,6 +166,7 @@ class InteractiveConsole:
 
             # do something with finished line
             if line.lower() in ('\\q', '!q', '\\quit', '!quit'):
+                self._stopped = True
                 self.bot_response_event.clear()
                 self.bot.close_room(warn=False)
                 self.bot_response_event.wait(self.cfg.response_timeout)

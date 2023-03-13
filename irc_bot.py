@@ -1,3 +1,4 @@
+import sys
 import re
 import threading
 from typing import Union
@@ -5,6 +6,7 @@ import multiprocessing
 from multiprocessing.synchronize import Event as MpEvent
 import irc.bot
 import irc.events
+import irc.dict
 from irc.strings import lower as irc_lower
 from irc.client import (
     ip_numstr_to_quad,
@@ -89,7 +91,7 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
 
     def stop(self):
         self._stopped = True
-        self.disconnect()
+        self.disconnect(msg="Goodbye")
         self._bot_motd_timer = None
         self._bot_response_timer = None
         
@@ -99,11 +101,9 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         self.reactor.disconnect_all()
 
     def _on_disconnect(self, connection: IRCServerConnection, event: IRCEvent):
-        try: self.close_room(warn=False)
-        except Exception: pass
-        if self._stopped:
-            return
-        return super()._on_disconnect(connection, event)
+        self.channels = irc.dict.IRCDict()
+        if not self._stopped:
+            self.recon.run(self)
 
     ## ----------------------------------------------------------------------
     #  public send() functions
