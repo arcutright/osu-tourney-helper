@@ -167,9 +167,7 @@ class InteractiveConsole:
             # do something with finished line
             if line.lower() in ('\\q', '!q', '\\quit', '!quit'):
                 self._stopped = True
-                self.bot_response_event.clear()
-                self.bot.close_room(warn=False)
-                self.bot_response_event.wait(self.cfg.response_timeout)
+                self.bot.shutdown()
                 Console.flush()
                 break
             if line:
@@ -184,7 +182,23 @@ class InteractiveConsole:
     def _readline(self):
         # loop over key presses during line input
         while not self.stop_event.is_set():
-            ch = readkey()
+            try:
+                ch = readkey()
+            except KeyboardInterrupt:
+                self._stopped = True
+                msg = (
+                    '\033[0m' + # reset all modes
+                    '\033[38;5;196m' + # bright red font
+                    '^C\nGot keyboard interrupt, exiting (do not press interrupt again)...' +
+                    '\033[0m' + # reset all modes
+                    '\n'
+                )
+                sys.stderr.write(Console._format_text(msg))
+                sys.stderr.flush()
+                self.bot.shutdown()
+                sys.stdout.flush()
+                sys.stderr.flush()
+                raise
             with Console.LockedWriter(source='c') as w:
                 (self.maxcols, self.maxrows) = shutil.get_terminal_size()
                 self.current_input_idx = max(0, min(self.current_input_idx, len(self.current_input)))
@@ -372,6 +386,14 @@ class DummyBot:
 
     def close_room(self, warn=True):
         Console.writeln(f"DummyBot close_room. warn={warn}")
+        self.bot_response_event.set()
+
+    def stop(self):
+        Console.writeln(f"DummyBot stop")
+        self.bot_response_event.set()
+
+    def shutdown(self):
+        Console.writeln(f"DummyBot shutdown")
         self.bot_response_event.set()
 
 def test_interactive_console(stop_event: "Union[Event, None]" = None):

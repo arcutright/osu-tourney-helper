@@ -36,12 +36,19 @@ class OsuIRCBot(BaseOsuIRCBot):
         self.__closing_room = False
 
     def stop(self):
-        self._stopped = True
-        try: self.close_room(warn=False)
-        except Exception: pass
-        self.disconnect()
-        self._bot_motd_timer = None
-        self._bot_response_timer = None
+        if self._stopped:
+            return
+        try:
+            if self.room_id:
+                if self._bot_response_timer is not None:
+                    self._bot_response_timer.cancel()
+                self.bot_response_event.clear()
+                self.close_room(warn=False)
+                self.bot_response_event.wait(self.cfg.response_timeout)
+        except Exception:
+            pass
+        finally:
+            super().stop()
     
     ## ----------------------------------------------------------------------
     # room management
@@ -243,6 +250,8 @@ class OsuIRCBot(BaseOsuIRCBot):
             self.channel = ''
         if self.__closing_room:
             self.room_id = ''
+            self.room_name = ''
+            self.room_link = ''
             self.__closing_room = False
     
     ## ----------------------------------------------------------------------
@@ -256,10 +265,12 @@ class OsuIRCBot(BaseOsuIRCBot):
     #def on_endofnames(self, conn: IRCServerConnection, event: IRCEvent):
     #    self.do_command(IRCEvent('stats', '', ''), ' '.join(event.arguments))
     
-    def on_namreply(self, conn: IRCServerConnection, event: IRCEvent):
+    #def on_namreply(self, conn: IRCServerConnection, event: IRCEvent):
         # when joining:  src:'cho.ppy.sh', target:'mastaa_p', args:'= #mp_107083661 @BanchoBot +mastaa_p '
-        self.do_command(event, f"namreply src:'{event.source}', target:'{event.target}', args:'{' '.join(event.arguments)}', tags:'{' '.join(event.tags)}'")
+        # self.do_command(event, f"namreply src:'{event.source}', target:'{event.target}', args:'{' '.join(event.arguments)}', tags:'{' '.join(event.tags)}'")
         # self.do_command(event, event.arguments[0])
+        # namreply src:'cho.ppy.sh', target:'mastaa_p', args:'= #mp_107344081 @BanchoBot +mastaa_p ', tags:'', msg:'= #mp_107344081 @BanchoBot +mastaa_p '
+        #self.do_command(event, ' '.join(event.arguments))
         # self.do_command(IRCEvent('stats', '', ''), ' '.join(event.arguments))
 
     ## ----------------------------------------------------------------------
@@ -267,25 +278,33 @@ class OsuIRCBot(BaseOsuIRCBot):
 
     def on_privmsg(self, conn: IRCServerConnection, event: IRCEvent):
         if not event.arguments: return
-        msg = str(event.arguments[0]).strip().lower()
+        msg = str(event.arguments[0]).rstrip()
         if not msg: return
-        if self.refers_to_bot_target(event.source):
-            if 'created' in msg:
-                i = msg.find('http://')
-                if i == -1: i = msg.find('https://')
+        if self.refers_to_server(event.source) and self.refers_to_self(event.target):
+            msgl = msg.lower()
+            if 'created' in msgl:
+                i = msgl.find('http://')
+                if i == -1: i = msgl.find('https://')
                 if i != -1:
-                    msg = msg[i:]
-                    i = msg.find(' ')
+                    msgl = msgl[i:]
+                    i = msgl.find(' ')
                     if i != -1:
-                        self.room_link = msg[:i]
-                        self.room_name = msg[i:].strip()
+                        self.room_link = msgl[:i]
+                        self.room_name = msgl[i:].strip()
                     else:
-                        self.room_link = msg.strip()
+                        self.room_link = msgl.strip()
                         self.room_name = ''
-        self.do_command(event, ' '.join(event.arguments))
+        self.do_command(event, f"{self.get_user(event.source)}: {msg}")
 
     def on_pubmsg(self, conn: IRCServerConnection, event: IRCEvent):
-        Console.writeln(' '.join(event.arguments))
+        if not event.arguments: return
+        msg = str(event.arguments[0]).rstrip()
+        if not msg: return
+        if not self.refers_to_server(event.source):
+            # TODO: name highlighting
+            pass
+        self.do_command(event, f"{self.get_user(event.source)}: {msg}")
+        return
         # leave event:
         #   source: 'BanchoBot!cho@ppy.sh'
         #   target: '#mp_107081811'

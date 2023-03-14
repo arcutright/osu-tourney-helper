@@ -143,14 +143,15 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         """Check if name refers to this bot's irc name/nickname (this calls get_user(name), it can handle 'user!cho@ppy.sh')"""
         ircname = irc_lower(self.connection.ircname)
         nickname = irc_lower(self.connection.get_nickname())
-        return (irc_lower(name) in (ircname, nickname)
-                or irc_lower(self.get_user(name)) in (ircname, nickname))
+        name = irc_lower(self.get_user(name))
+        return name in (ircname, nickname)
     
-    def refers_to_bot_target(self, name: str):
-        """Check if name refers to bot_target (BanchoBot) irc name/nickname (this calls get_user(name), it can handle 'user!cho@ppy.sh')"""
+    def refers_to_server(self, name: str):
+        """Check if name refers to bot_target (BanchoBot) irc name/nickname or the server itself (this calls get_user(name), it can handle 'user!cho@ppy.sh')"""
         ircname = irc_lower(self.bot_target)
-        return (irc_lower(name) == ircname
-                or irc_lower(self.get_user(name)) == ircname)
+        name = irc_lower(self.get_user(name))
+        return (name == ircname
+                or name == irc_lower(self.connection.get_server_name()))
     
     def _clear_response_event(self):
         if self._bot_response_timer is not None:
@@ -240,20 +241,20 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
 
     def on_nosuchchannel(self, conn: IRCServerConnection, event: IRCEvent):
         if not self.refers_to_self(event.target): return
-        messages = "', '".join([str(arg) for arg in event.arguments])
-        log.warn(f"No such channel! messages: ['{messages}']\n")
+        log.warn(f"No such channel! message: '{' '.join(event.arguments)}'\n")
 
     def on_currenttopic(self, conn: IRCServerConnection, event: IRCEvent):
-        self.do_command(event, f"currenttopic src:'{event.source}', target:'{event.target}', args:'{' '.join(event.arguments)}', tags:'{' '.join(event.tags)}'")
+        self.do_command(event, ' '.join(event.arguments))
 
     def on_topicinfo(self, conn: IRCServerConnection, event: IRCEvent):
-        self.do_command(event, f"topicinfo src:'{event.source}', target:'{event.target}', args:'{' '.join(event.arguments)}', tags:'{' '.join(event.tags)}'")
+        self.do_command(event, ' '.join(event.arguments))
         
     def on_endofnames(self, conn: IRCServerConnection, event: IRCEvent):
+        # Console.writeln(f"endofnames src:'{event.source}', target:'{event.target}', args:'{' '.join(event.arguments)}', tags:'{' '.join(event.tags)}'")
         self.do_command(IRCEvent('stats', '', ''), ' '.join(event.arguments))
     
     def on_namreply(self, conn: IRCServerConnection, event: IRCEvent):
-        self.do_command(event, f"namreply src:'{event.source}', target:'{event.target}', args:'{' '.join(event.arguments)}', tags:'{' '.join(event.tags)}'")
+        self.do_command(event, ' '.join(event.arguments))
 
     ## ----------------------------------------------------------------------
     # raw message handling
@@ -334,38 +335,46 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         nick = event.source
         conn = self.connection
         cmd = event.type
+        msg2 = f"src:'{event.source}', target:'{event.target}', args:'{' '.join(event.arguments)}', tags:'{' '.join(event.tags)}', msg:'{msg}'"
 
         if cmd == "disconnect":
-            Console.writeln(f"discconect by request: {msg}")
+            Console.writeln(f"disconnect by request: {msg2}")
             self.disconnect()
         elif cmd == "die":
-            self.die()
-        elif cmd in ("motd", "currenttopic", "topicinfo"):
+            self.shutdown()
+            sys.exit(-92)
+        elif cmd in ("motd", "motd2", "motdstart", "motdend"):
             Console.writeln(f"{msg}")
+        elif cmd in ("currenttopic", "topicinfo"):
+            # Console.writeln(f"{cmd} {msg}")
+            pass
         elif cmd in ("privmsg", "pubmsg"):
-            Console.writeln(f"{msg}")
+            Console.writeln(f"{cmd:<7} {msg}")
         elif cmd in ("namreply", "whoreply"):
-            Console.writeln(f"{msg}")
+            # Console.writeln(f"{cmd} {msg2}")
+            pass
         elif cmd in ("privnotice", "pubnotice"):
-            Console.writeln(f"{cmd}: {msg}")
+            Console.writeln(f"{cmd}: {msg2}")
         elif cmd == "stats":
-            for chname, chobj in self.channels.items():
-                conn.notice(nick, "--- Channel statistics ---")
-                conn.notice(nick, "Channel: " + chname)
+            chname: str
+            chobj: irc.bot.Channel
+            for (chname, chobj) in self.channels.items():
+                Console.writeln("---------- !stats ----------")
+                Console.writeln(f"Channel: {chname}")
                 users = sorted(chobj.users())
-                conn.notice(nick, "Users: " + ", ".join(users))
+                Console.writeln(f"Users: {', '.join(users)}")
                 opers = sorted(chobj.opers())
-                conn.notice(nick, "Opers: " + ", ".join(opers))
+                Console.writeln(f"Opers: {', '.join(opers)}")
                 voiced = sorted(chobj.voiced())
-                conn.notice(nick, "Voiced: " + ", ".join(voiced))
-            self.bot_response_event.set() # not waiting on an IRC response
+                Console.writeln(f"Voiced: {', '.join(voiced)}")
+                Console.writeln("----------------------------")
         elif cmd == "dcc":
             dcc = self.dcc_listen()
             conn.ctcp("DCC", nick,
                 f"CHAT chat {ip_quad_to_numstr(dcc.localaddress)} {dcc.localport}"
             )
         else:
-            log.warn(f"unrecognized cmd: '{cmd}', msg: '{msg}'\n")
+            log.warn(f"unrecognized cmd: '{cmd}', msg2: '{msg2}'\n")
             # conn.notice(nick, f"Not understood: {cmd}")
 
         # set the event flag a bit after the response stops coming in
