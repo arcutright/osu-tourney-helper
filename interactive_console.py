@@ -8,6 +8,7 @@ from typing import Union
 from readchar import readkey, key as keycode
 import pyperclip # clipboard support
 
+from helpers import value_or_fallback
 from console import Console, log
 from config import Config, parse_config
 from osu_irc_bot import OsuIRCBot
@@ -16,15 +17,11 @@ class InteractiveConsole:
     def __init__(self,
                  bot: "Union[OsuIRCBot, DummyBot]",
                  cfg: Config,
-                 bot_motd_event: "Union[Event, None]" = None,
-                 bot_response_event: "Union[Event, None]" = None,
                  stop_event: "Union[Event, None]" = None
     ):
         self.bot = bot
         self.cfg = cfg
-        self.bot_motd_event = bot_motd_event
-        self.bot_response_event = bot_response_event
-        self.stop_event = stop_event if stop_event is not None else multiprocessing.Event()
+        self.stop_event = value_or_fallback(stop_event, multiprocessing.Event())
         self._stopped = False
 
         self.insert_mode = False
@@ -129,10 +126,11 @@ class InteractiveConsole:
         self.current_input_idx += n
 
     def main_loop(self):
-        if self.bot_motd_event is not None:
-            self.bot_motd_event.wait(self.cfg.response_timeout)
-        if self.cfg.room_name and self.cfg.room_password is not None:
-            self.bot_response_event.wait(self.cfg.response_timeout) # wait until we join the room
+        if self.bot.motd_event is not None:
+            self.bot.motd_event.wait(self.cfg.motd_timeout)
+        if self.bot.response_event is not None:
+            if self.cfg.room_name and self.cfg.room_password is not None:
+                self.bot.response_event.wait(self.cfg.response_timeout) # wait until we join the room
 
         self._stopped = False
         Console.flush()
@@ -172,9 +170,9 @@ class InteractiveConsole:
                 break
             if line:
                 try:
-                    self.bot_response_event.clear()
+                    self.bot.clear_response_event()
                     self.bot.send_bot_command(line)
-                    self.bot_response_event.wait(self.cfg.response_timeout)
+                    self.bot.response_event.wait(self.cfg.response_timeout)
                     Console.flush()
                 except Exception as ex:
                     log.error(ex, exc_info=True)
@@ -359,42 +357,45 @@ class InteractiveConsole:
 # dummy code to test the interactive console behavior
 
 class DummyBot:
-    def __init__(self, bot_motd_event: Event, bot_response_event: Event):
-        self.bot_motd_event = bot_motd_event
-        self.bot_response_event = bot_response_event
-        bot_motd_event.set()
+    def __init__(self, motd_event: Event, response_event: Event):
+        self.motd_event = motd_event
+        self.response_event = response_event
+        motd_event.set()
+
+    def clear_response_event(self):
+        self.response_event.clear()
 
     def send_bot_command(self, msg):
         Console.writeln(f"DummyBot send_bot_command: '{msg}'")
-        self.bot_response_event.set()
+        self.response_event.set()
 
     def send_message(self, channel: str, content: str):
         Console.writeln(f"DummyBot send_message: '{channel}' -> '{content}'")
-        self.bot_response_event.set()
+        self.response_event.set()
 
     def send_pm(self, user: str, content: str):
         Console.writeln(f"DummyBot send_pm: '{user}' -> '{content}'")
-        self.bot_response_event.set()
+        self.response_event.set()
 
     def send_raw(self, content: str):
         Console.writeln(f"DummyBot send_raw: '{content}'")
-        self.bot_response_event.set()
+        self.response_event.set()
 
     def join_channel(self, channel: str):
         Console.writeln(f"DummyBot join_channel: '{channel}'")
-        self.bot_response_event.set()
+        self.response_event.set()
 
     def close_room(self, warn=True):
         Console.writeln(f"DummyBot close_room. warn={warn}")
-        self.bot_response_event.set()
+        self.response_event.set()
 
     def stop(self):
         Console.writeln(f"DummyBot stop")
-        self.bot_response_event.set()
+        self.response_event.set()
 
     def shutdown(self):
         Console.writeln(f"DummyBot shutdown")
-        self.bot_response_event.set()
+        self.response_event.set()
 
 def test_interactive_console(stop_event: "Union[Event, None]" = None):
     cfg = parse_config()
@@ -402,5 +403,5 @@ def test_interactive_console(stop_event: "Union[Event, None]" = None):
     bot_response_event = multiprocessing.Event()
     bot_motd_event = multiprocessing.Event()
     bot = DummyBot(bot_motd_event, bot_response_event)
-    iconsole = InteractiveConsole(bot, cfg, bot_motd_event, bot_response_event, stop_event)
+    iconsole = InteractiveConsole(bot, cfg, stop_event)
     iconsole.main_loop()

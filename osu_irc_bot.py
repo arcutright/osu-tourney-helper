@@ -9,27 +9,28 @@ from irc.client import (
     Event as IRCEvent
 )
 
+from helpers import value_or_fallback
 from config import Config
 from console import Console, log
 from irc_bot import BaseOsuIRCBot
 
 class OsuIRCBot(BaseOsuIRCBot):
     def __init__(self, cfg: Config,
-                 bot_response_event: "Union[MpEvent, None]" = None,
-                 bot_motd_event: "Union[MpEvent, None]" = None,
+                 response_event: "Union[MpEvent, None]" = None,
+                 motd_event: "Union[MpEvent, None]" = None,
                  map_infos_populated_event: "Union[MpEvent, None]" = None,
                  **connect_params):
         BaseOsuIRCBot.__init__(
             self,
             cfg=cfg,
-            bot_response_event=bot_response_event,
-            bot_motd_event=bot_motd_event,
+            response_event=response_event,
+            motd_event=motd_event,
             map_infos_populated_event=map_infos_populated_event,
             **connect_params
         )
-        self.channel = cfg.initial_channel or ''
-        self.channel_password = cfg.initial_channel_password or ''
-        self.raw_commands = cfg.raw_commands or []
+        self.channel = value_or_fallback(cfg.initial_channel, '')
+        self.channel_password = value_or_fallback(cfg.initial_channel_password, '')
+        self.raw_commands = value_or_fallback(cfg.raw_commands, [])
 
         self.room_id = ''
         self.__creating_room = False
@@ -40,11 +41,10 @@ class OsuIRCBot(BaseOsuIRCBot):
             return
         try:
             if self.room_id:
-                if self._bot_response_timer is not None:
-                    self._bot_response_timer.cancel()
-                self.bot_response_event.clear()
+                self.cancel_motd_event()
+                self.clear_response_event()
                 self.close_room(warn=False)
-                self.bot_response_event.wait(self.cfg.response_timeout)
+                self.response_event.wait(self.cfg.response_timeout)
         except Exception:
             pass
         finally:
@@ -78,7 +78,7 @@ class OsuIRCBot(BaseOsuIRCBot):
             log.error(f"room '{room_name}' is already open! id = '{self.room_id}'")
             return
         # log.info(f"make room: {room_name}")
-        self._clear_response_event()
+        self.clear_response_event()
         self.__creating_room = True
         self.room_id = ''
         self.cfg.room_name = room_name
@@ -169,7 +169,7 @@ class OsuIRCBot(BaseOsuIRCBot):
             Console.writeln(f"{'-'*8}  {'-'*9}  {'-'*12}  {'-'*38} {'-'*20}")
             for map in self.cfg.maps:
                 Console.writeln(f"{map.label:<8}  {map.mapid:>9}  {map.mods:<12}  {map.get_osu_link():<38}  {map.description}")
-            self.bot_response_event.set()
+            self.set_response_event(delay=0)
             return
         
         elif command.startswith(('mp inviteall', 'mp invite_all')):
@@ -210,15 +210,13 @@ class OsuIRCBot(BaseOsuIRCBot):
 
         # no response expected for plain messages to a room
         if not is_command:
-            self.bot_response_event.set()
+            self.set_response_event(delay=0)
 
     ## ----------------------------------------------------------------------
     #  join / welcome / message of the day handling
 
-    def _motd_complete(self):
-        if self._did_motd_complete: return
-        super()._motd_complete()
-
+    def _on_motd_complete(self):
+        super()._on_motd_complete()
         if self.cfg.room_name:
             self.create_room()
         elif self.channel:

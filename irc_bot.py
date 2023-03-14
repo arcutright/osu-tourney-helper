@@ -16,6 +16,7 @@ from irc.client import (
     Event as IRCEvent
 )
 
+from helpers import value_or_fallback
 from config import Config
 from console import Console, log
 
@@ -52,25 +53,27 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
     any of its own commands.
     """
     def __init__(self, cfg: Config,
-                 bot_response_event: "Union[MpEvent, None]" = None,
-                 bot_motd_event: "Union[MpEvent, None]" = None,
+                 response_event: "Union[MpEvent, None]" = None,
+                 motd_event: "Union[MpEvent, None]" = None,
                  map_infos_populated_event: "Union[MpEvent, None]" = None,
                  **connect_params):
         server_list = [(cfg.server, cfg.port, cfg.password)] if cfg.password else [(cfg.server, cfg.port)]
         irc.bot.SingleServerIRCBot.__init__(self, server_list, nickname=cfg.nickname, realname=cfg.username, username=cfg.username, **connect_params)
-        self.bot_target = cfg.bot_target or ''
+        self.bot_target = value_or_fallback(cfg.bot_target, '')
         self.cfg = cfg
 
-        self.bot_event_delay = cfg.event_delay_timeout or 0.8
-        if bot_motd_event is not None: bot_motd_event.clear()
-        if bot_response_event is not None: bot_response_event.clear()
-        self.bot_response_event = bot_response_event if bot_response_event is not None else multiprocessing.Event()
-        self.bot_motd_event = bot_motd_event if bot_motd_event is not None else multiprocessing.Event()
-        self.map_infos_populated_event = map_infos_populated_event if map_infos_populated_event is not None else multiprocessing.Event()
+        self.event_delay_timeout = value_or_fallback(cfg.event_delay_timeout, 0.8)
+        self.motd_timeout = value_or_fallback(cfg.motd_timeout, 3.0)
+        self.response_timeout = value_or_fallback(cfg.response_timeout, 5.0)
+        self.response_event = value_or_fallback(response_event, multiprocessing.Event())
+        self.motd_event = value_or_fallback(motd_event, multiprocessing.Event())
+        self.motd_event.clear()
+        self.response_event.clear()
+        self.map_infos_populated_event = value_or_fallback(map_infos_populated_event, multiprocessing.Event())
 
         self.room_id = ''
-        self._bot_motd_timer = None
-        self._bot_response_timer = None
+        self._motd_timer = None
+        self._response_timer = None
         self._did_motd_complete = False
         self._stopped = False
 
@@ -79,9 +82,11 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
 
     def start(self, timeout=0.2):
         """Start the bot."""
-        self._bot_motd_timer = None
-        self._bot_response_timer = None
+        self.clear_motd_event()
+        self.clear_response_event()
         self._connect()
+        if self.connection.is_connected():
+            self.set_motd_event()
         try:
             while not self._stopped:
                 self.reactor.process_once(timeout)
@@ -92,8 +97,6 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
     def stop(self):
         self._stopped = True
         self.disconnect(msg="Goodbye")
-        self._bot_motd_timer = None
-        self._bot_response_timer = None
         
     def shutdown(self):
         self.recon = NoReconnectStrategy()
@@ -116,19 +119,19 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
 
     def send_message(self, channel: str, content: str):
         """Send a message to a channel on the server"""
-        self._clear_response_event()
+        self.clear_response_event()
         channel = self._format_channel(channel)
         self.connection.privmsg(channel, content)
 
     def send_pm(self, user: str, content: str):
         """Send a private message to a user on the server"""
-        self._clear_response_event()
+        self.clear_response_event()
         user = self._format_user(user)
         self.connection.privmsg(user, content)
 
     def send_raw(self, content: str):
         """Send a raw string to the server (will be padded with CLRF for you)"""
-        self._clear_response_event()
+        self.clear_response_event()
         self.connection.send_raw(content)
 
     ## ----------------------------------------------------------------------
@@ -153,11 +156,6 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         return (name == ircname
                 or name == irc_lower(self.connection.get_server_name()))
     
-    def _clear_response_event(self):
-        if self._bot_response_timer is not None:
-            self._bot_response_timer.cancel()
-        self.bot_response_event.clear()
-
     def _format_channel(self, channel: str):
         if not channel: return ''
         return '#' + channel.strip().strip('#').strip().replace(' ', '_')
@@ -168,30 +166,96 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         return user.strip().strip('#').strip().replace(' ', '_')
     
     ## ----------------------------------------------------------------------
-    #  join / welcome / message of the day handling
+    #  irc response / motd events
+
+    def _on_response_complete(self):
+        """Callback to set `response_event`
+        (usually after some delay `event_delay_timeout`, when there has been no further response)
+        """
+        self.response_event.set()
+        self.cancel_response_event()
+
+    def __on_motd_complete(self):
+        if self._did_motd_complete: return
+        self._on_motd_complete()
+        self._did_motd_complete = True
+
+    def _on_motd_complete(self):
+        """Callback to set `motd_event` and detach any running timers when motd is complete
+        or `motd_timeout` has been exceeded. \n
+        This is only fired if `_did_motd_complete` was not already set
+        """
+        self.motd_event.set()
+        self._did_motd_complete = True
+        self.cancel_motd_event()
+
+    def cancel_response_event(self):
+        """Cancel previous bot response events but does not affect the state of `response_event`"""
+        if self._response_timer is not None:
+            self._response_timer.cancel()
+            self._response_timer = None
+
+    def cancel_motd_event(self):
+        """Cancel previous bot motd events but does not affect the state of `motd_event`"""
+        if self._motd_timer is not None:
+            self._motd_timer.cancel()
+            self._motd_timer = None
+
+    def clear_response_event(self):
+        """Cancel previous response events and clear `response_event`"""
+        self.cancel_response_event()
+        self.response_event.clear()
+
+    def clear_motd_event(self):
+        """Cancel previous motd events and clear `motd_event` and the `_did_motd_complete` flag"""
+        self.cancel_motd_event()
+        self.motd_event.clear()
+        self._did_motd_complete = False
+
+    def set_response_event(self, delay: "Union[float, None]" = None):
+        """ Sets `response_event` after a delay (if None, defaults to `event_delay_timeout`)"""
+        self.cancel_response_event()
+        if delay is None:
+            delay = self.event_delay_timeout
+        if delay == 0:
+            self._on_response_complete()
+        else:
+            self._response_timer = threading.Timer(delay, self._on_response_complete)
+            self._response_timer.start()
+
+    def set_motd_event(self, delay: "Union[float, None]" = None):
+        """ Sets `motd_event` after a delay (if None, defaults to `motd_timeout`). \n
+        Note that motd event will only ever be set once (see `_did_motd_complete`)
+        """
+        if self._did_motd_complete: return
+        self.cancel_motd_event()
+        if delay is None:
+            delay = self.motd_timeout
+        if delay == 0:
+            self.__on_motd_complete()
+        else:
+            self._motd_timer = threading.Timer(delay, self.__on_motd_complete)
+            self._motd_timer.start()
+    
+    ## ----------------------------------------------------------------------
+    #  join / welcome
 
     def on_welcome(self, conn: IRCServerConnection, event: IRCEvent):
         messages = "', '".join([str(arg) for arg in event.arguments])
         log.info(f"Connected to '{event.source}'. Messages: ['{messages}']")
-
-        if self._bot_motd_timer is not None:
-            self._bot_motd_timer.cancel()
-        self._bot_motd_timer = threading.Timer(self.cfg.motd_timeout, lambda: self._motd_complete())
-        self._bot_motd_timer.start()
+        self.set_motd_event()
     
     def on_join(self, conn: IRCServerConnection, event: IRCEvent):
         user = self.get_user(event.source)
         log.info(f"'{user}' joined '{event.target}'")
 
+    ## ----------------------------------------------------------------------
+    #  message of the day handling
+
     def on_motd(self, conn: IRCServerConnection, event: IRCEvent):
         if not self.refers_to_self(event.target): return
         Console.writeln(' '.join(event.arguments))
-
-        # set the motd event flag a bit after the motd stops coming in
-        if self._bot_motd_timer is not None:
-            self._bot_motd_timer.cancel()
-        self._bot_motd_timer = threading.Timer(self.bot_event_delay, lambda: self._motd_complete())
-        self._bot_motd_timer.start()
+        self.set_motd_event()
 
     def on_motd2(self, conn: IRCServerConnection, event: IRCEvent):
         self.on_motd(conn, event)
@@ -202,16 +266,7 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
     def on_endofmotd(self, conn: IRCServerConnection, event: IRCEvent):
         if not self.refers_to_self(event.target): return
         Console.writeln(' '.join(event.arguments))
-        self._motd_complete()
-
-    def _motd_complete(self):
-        if self._did_motd_complete: return
-        self._did_motd_complete = True
-
-        if self._bot_motd_timer is not None:
-            self._bot_motd_timer.cancel()
-        self.bot_motd_event.set()
-        self._bot_motd_timer = None
+        self.set_motd_event(delay=0)
 
     ## ----------------------------------------------------------------------
     # leave / error events
@@ -378,7 +433,4 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
             # conn.notice(nick, f"Not understood: {cmd}")
 
         # set the event flag a bit after the response stops coming in
-        if self._bot_response_timer is not None:
-            self._bot_response_timer.cancel()
-        self._bot_response_timer = threading.Timer(self.bot_event_delay, lambda: self.bot_response_event.set())
-        self._bot_response_timer.start()
+        self.set_response_event()

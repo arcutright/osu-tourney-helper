@@ -67,18 +67,12 @@ def main_bot():
     bot_motd_event = multiprocessing.Event()
     bot = OsuIRCBot(
         cfg,
-        bot_response_event=bot_response_event,
-        bot_motd_event=bot_motd_event,
+        response_event=bot_response_event,
+        motd_event=bot_motd_event,
         map_infos_populated_event=map_infos_populated_event,
         connect_factory=connect_factory
     )
-    iconsole = InteractiveConsole(
-        bot,
-        cfg,
-        bot_motd_event=bot_motd_event,
-        bot_response_event=bot_response_event,
-        stop_event=stop_event
-    )
+    iconsole = InteractiveConsole(bot, cfg, stop_event)
 
     map_info_thread = threading.Thread(target=trap_interrupt, args=(populate_map_infos, cfg, map_infos_populated_event, stop_event), daemon=True, name='map_info_fetch')
     console_thread = threading.Thread(target=trap_interrupt, args=(iconsole.main_loop, ), name='interactive_console')

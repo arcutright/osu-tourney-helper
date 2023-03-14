@@ -365,7 +365,10 @@ class Console:
             if self.target_name == 'stderr':
                 self.prev_console_output = Console._get_console_stderr()
             else:
-                self.prev_console_output = Console._get_console_stdout() or Console._get_console_prompt()
+                self.prev_console_output = Console._get_console_stdout()
+                if not self.prev_console_output:
+                    self.prev_console_output = Console._get_console_prompt()
+                    # self.console_buffer.extend(list(self.prev_console_output))
             Console.erase_console_output(self.target_name)
             return self
 
