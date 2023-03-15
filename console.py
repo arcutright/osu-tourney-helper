@@ -3,7 +3,7 @@ import sys
 import re
 import logging
 import traceback
-from multiprocessing import Lock, RLock
+import multiprocessing
 from typing import Final, Callable, Union, TextIO
 import subprocess
 import shutil
@@ -54,7 +54,8 @@ class Console:
     is re-written. This makes it feel like the conosle prompt "floats" at 
     the bottom of the console.
     """
-    _LOCK = RLock()
+    _LOCK = multiprocessing.RLock()
+    """Used to ensure the console vs user outputs are kept separate in the `Console.*write*` funcs and `LockedWriter` """
     _last_source = '' # blank = not the console, 'c' = the console
     _console_stdout: "list[str]" = []
     _console_stderr: "list[str]" = []
@@ -146,29 +147,74 @@ class Console:
     @staticmethod
     def get_cursor_pos():
         """Returns (column#, line#) of current cursor pos in the terminal (note this should never return col=0, only col=1). \n
-        Returns (-1, -1) if there was some problem.
+        Returns (-1, -1) if there was some problem (this will try at most twice).
 
-        WARNING: this will cause problems if you haven't set up stdin/stdout via `try_patch_stdin_stdout_behavior`
+        WARNING 1: this will cause problems if you haven't set up stdin/stdout via `try_patch_stdin_stdout_behavior` \n
+        WARNING 2: this can (unlikely) behave unpredictably if the user is typing quickly while this function is running \n
         """
         with Console._LOCK:
-            sys.stdout.write("\033[6n") # reports as ESC[#;#R
-            sys.stdout.flush()
-            resp = []
-            ch = ''
-            l = 0
-            while l < 15: # sanity limit in case of problems
-                ch = sys.stdin.read(1)
-                if ch == 'R':
-                    break
-                resp.append(ch)
-                l += 1
-            respstr = ''.join(resp[2:])
-            idx = respstr.find(';')
-            if idx == -1:
+            (col, row) = Console.__get_cursor_pos(warn=False)
+            if col < 0 or row < 0:
+                return Console.__get_cursor_pos(warn=True) # try again just in case
+
+    @staticmethod
+    def __get_cursor_pos(warn=True):
+        try:
+            # This code writes the ANSI escape sequence for 'what is my cursor pos?'
+            # This has lots of checks and fallback logic because it is possible for
+            # the user to submit keystrokes while we are reading the ANSI cursor
+            # position response on stdin
+            #
+            # Note: ESC is written as a placeholder for '\033'
+
+            (maxcols, maxrows) = shutil.get_terminal_size()
+            minlen = 6 # len('\033[1;1R')
+            maxlen = len(f"\033[{maxcols};{maxrows}R") + 5  # pretty unreasonable for user to sneak 5 keystrokes in during ANSI command echo
+
+            sys.__stdin__.flush()
+            sys.__stdout__.flush()
+            sys.__stdout__.write("\033[6n") # terminal will respond with 'ESC[<row>;<col>R'
+            sys.__stdout__.flush()
+
+            # read the terminal's response (must be >= minlen)
+            bufstr = sys.__stdin__.read(minlen)
+            buffer = list(bufstr)
+            if len(buffer) < minlen:
+                sys.__stdout__.write(bufstr) # something strange happened
                 return (-1, -1)
-            row = int(respstr[:idx])
-            col = int(respstr[idx+1:])
-            return col, row
+            
+            ch = buffer[-1]
+            j = len(buffer)
+            while ch != 'R' and j < maxlen: # sanity limit in case of problems
+                ch = sys.__stdin__.read(1)
+                # TODO: need to figure out how to distinguish other user input at the same time, and echo it out...
+                buffer.append(ch)
+                j += 1
+
+            if ch != 'R':
+                if warn: print(f"Unable to read respstr end: {buffer}")
+                return (-1, -1)
+
+            respstr = ''.join(buffer[:-1]) # skip 'R' at the end
+            i = respstr.rfind('\033') # find the start of the response
+            if i == -1:
+                sys.__stdout__.write(''.join(buffer)) # the whole thing was user chars
+                if warn: print(f"Unable to read respstr start: {buffer}")
+                return (-1, -1)
+            elif i > 0:
+                sys.__stdout__.write(''.join(buffer[0:i])) # there were user chars mixed in the front
+
+            sep = respstr.rfind(';', i+3) # i+3: skip 'ESC[' and first digit (row#), find the row/col separator ';'
+            if sep == -1:
+                if warn: print(f"Unable to read respstr sep: {buffer}")
+                return (-1, -1)
+
+            row = int(respstr[i+2:sep]) # i+2: skip 'ESC['
+            col = int(respstr[sep+1:])
+            return (col, row)
+        except Exception:
+            if warn: print(f"Error reading respstr: {buffer}\n{traceback.format_exc()}")
+            return (-1, -1)
 
     @staticmethod
     def _format_text(text: str):
@@ -280,18 +326,20 @@ class Console:
             # target.flush()
 
     @staticmethod
-    def move_cursor_left(n: int, target_name='stdout'):
+    def move_cursor_left(n: int, target_name='stdout') -> bool:
         """Move console cursor left `n` positions, wrapping up lines if needed. \n
         Note this does not keep track of the cursor, so it will go 'out of bounds' if you ask it to.
         """
         if n == 0:
-            return
+            return True
         elif n < 0: 
             return Console.move_cursor_right(-n, target_name)
         with Console._LOCK:
             target = sys.stderr if target_name == 'stderr' else sys.stdout
             (maxcols, maxrows) = shutil.get_terminal_size()
             (col, row) = Console.get_cursor_pos()
+            if col < 0 or row < 0:
+                return False
             nr, nc = divmod(n, maxcols)
             dest_row = row - nr
             dest_col = col - nc
@@ -301,20 +349,23 @@ class Console:
             dest_row = max(1, dest_row)
             dest_col = max(1, dest_col)
             target.write(f"\033[{dest_row};{dest_col}H") # move cursor to final row of console output
+            return True
 
     @staticmethod
-    def move_cursor_right(n: int, target_name='stdout'):
+    def move_cursor_right(n: int, target_name='stdout') -> bool:
         """Move console cursor right `n` positions, wrapping down lines if needed. \n
         Note this does not keep track of the cursor, so it will go 'out of bounds' if you ask it to.
         """
         if n == 0:
-            return
+            return True
         elif n < 0: 
             return Console.move_cursor_left(-n, target_name)
         with Console._LOCK:
             target = sys.stderr if target_name == 'stderr' else sys.stdout
             (maxcols, maxrows) = shutil.get_terminal_size()
             (col, row) = Console.get_cursor_pos()
+            if col < 0 or row < 0:
+                return False
             nr, nc = divmod(n, maxcols)
             dest_row = row + nr
             dest_col = col + nc
@@ -324,6 +375,7 @@ class Console:
             dest_row = max(1, dest_row)
             dest_col = max(1, dest_col)
             target.write(f"\033[{dest_row};{dest_col}H") # move cursor to final row of console output
+            return True
 
 
     class LockedWriter(object):
