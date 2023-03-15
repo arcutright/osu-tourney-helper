@@ -155,7 +155,8 @@ class Console:
         with Console._LOCK:
             (col, row) = Console.__get_cursor_pos(warn=False)
             if col < 0 or row < 0:
-                return Console.__get_cursor_pos(warn=True) # try again just in case
+                (col, row) = Console.__get_cursor_pos(warn=True) # try again just in case
+            return (col, row)
 
     @staticmethod
     def __get_cursor_pos(warn=True):
