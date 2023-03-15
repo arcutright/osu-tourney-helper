@@ -525,6 +525,9 @@ class Console:
         """
         if not sys.stdout.isatty():
             return
+        if Console.original_stdin_mode is not None:
+            return
+        
         if os.name != 'nt':
             try:
                 import termios
@@ -586,7 +589,8 @@ class Console:
 
                     p.wait(2)
                     if p.returncode is None: # process didn't die, it probably spawned ok
-                        exit(0)
+                        Console.try_restore_stdin_stdout_behavior()
+                        sys.exit(0)
                 except Exception:
                     traceback.print_exc()
 
