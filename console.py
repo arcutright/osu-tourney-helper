@@ -312,7 +312,7 @@ class Console:
             if console_output_len > 0:
                 # move to start of console output
                 cursor_offset = Console._get_console_cursor_offset()
-                Console.move_cursor_left(cursor_offset)
+                Console.move_cursor_left_relative(cursor_offset, cursor_offset, target_name)
                 # erase all console output
                 (maxcols, maxrows) = shutil.get_terminal_size()
                 num_lines = 1 + console_output_len // maxcols # total number of lines taken up by console output
@@ -325,16 +325,86 @@ class Console:
             target.write('\033[2K') # erase line
             target.write('\033[0m') # reset all modes
             # target.flush()
+        
+    @staticmethod
+    def move_cursor_left_relative(n: int, cursor_offset: int, target_name='stdout'):
+        """Move console cursor left `n` positions, relative to its given position, wrapping up lines if needed. \n
+        params:
+            `cursor_col_offset`: number of positions the cursor is from the first column for the current
+            line of text, ignoring any wrapping. If the text spans multiple lines, the cursor_col_offset
+            should be `nrows*<max cols per row> + current col`.
+        """
+        n = min(n, cursor_offset) # prevent negative position
+        if n == 0:
+            return
+        elif n < 0: 
+            Console.move_cursor_right_relative(-n, cursor_offset, target_name)
+            return
+        with Console._LOCK:
+            target = sys.stderr if target_name == 'stderr' else sys.stdout
+            (maxcols, maxrows) = shutil.get_terminal_size()
+
+            cursor_row_offset, cursor_offset = divmod(cursor_offset, maxcols)
+            col_target = cursor_offset - n
+            if col_target >= 0:
+                target.write(f"\033[{n}D") # move cursor left
+            else:
+                nrows, ncols = divmod(-col_target, maxcols)
+                nrows += 1
+                target.write(f"\033[{nrows}A") # move cursor up
+                target.write("\r") # move cursor to beginning of line
+                if maxcols - ncols > 0:
+                    target.write(f"\033[{maxcols - ncols}C") # move cursor right
+        
+    @staticmethod
+    def move_cursor_right_relative(n: int, cursor_offset: int, target_name='stdout'):
+        """Move console cursor right `n` positions, relative to its given position, wrapping up lines if needed. \n
+        Note: this has no way of knowing the max buffer size (if moving within a line of text), so it will go
+        'out of bounds' if you ask it to.
+
+        params:
+            `cursor_col_offset`: number of positions the cursor is from the first column for the current
+            line of text, ignoring any wrapping. If the text spans multiple lines, the cursor_col_offset
+            should be `nrows*<max cols per row> + current col`.
+        """
+        if n == 0:
+            return
+        elif n < 0:
+            Console.move_cursor_left_relative(-n, cursor_offset, target_name)
+            return
+        with Console._LOCK:
+            target = sys.stderr if target_name == 'stderr' else sys.stdout
+            (maxcols, maxrows) = shutil.get_terminal_size()
+
+            cursor_row_offset, cursor_offset = divmod(cursor_offset, maxcols)
+            col_target = cursor_offset + n
+            if col_target < maxcols:
+                target.write(f"\033[{n}C") # move cursor right
+            else:
+                row_target, col_target = divmod(col_target, maxcols)
+                nrows = row_target - cursor_row_offset
+                target.write(f"\033[{nrows}B") # move cursor down
+                target.write("\r") # move cursor to beginning of line
+                if col_target > 0:
+                    target.write(f"\033[{col_target}C") # move cursor right
 
     @staticmethod
-    def move_cursor_left(n: int, target_name='stdout') -> bool:
-        """Move console cursor left `n` positions, wrapping up lines if needed. \n
+    def try_move_cursor_left(n: int, target_name='stdout') -> bool:
+        """(May be unreliable) try to move console cursor left `n` positions, wrapping up lines if needed.
+
+        - If you set `Console.get_console_cursor_offset`, this will call `move_cursor_right_relative` and be reliable.
+        - Otherwise, see the warnings for `Console.get_cursor_pos()`, which relies on reading from stdin while user may be typing.
+        - Use `move_cursor_left_relative` for a reliable implementation.
+
         Note this does not keep track of the cursor, so it will go 'out of bounds' if you ask it to.
         """
         if n == 0:
             return True
-        elif n < 0: 
-            return Console.move_cursor_right(-n, target_name)
+        elif callable(Console.get_console_cursor_offset):
+            Console.move_cursor_left_relative(n, Console.get_console_cursor_offset(), target_name)
+            return True
+        elif n < 0:
+            return Console.try_move_cursor_right(-n, target_name)
         with Console._LOCK:
             target = sys.stderr if target_name == 'stderr' else sys.stdout
             (maxcols, maxrows) = shutil.get_terminal_size()
@@ -353,14 +423,22 @@ class Console:
             return True
 
     @staticmethod
-    def move_cursor_right(n: int, target_name='stdout') -> bool:
-        """Move console cursor right `n` positions, wrapping down lines if needed. \n
+    def try_move_cursor_right(n: int, target_name='stdout') -> bool:
+        """(May be unreliable) try to move console cursor right `n` positions, wrapping down lines if needed.
+
+        - If you set `Console.get_console_cursor_offset`, this will call `move_cursor_right_relative` and be reliable.
+        - Otherwise, see the warnings for `Console.get_cursor_pos()`, which relies on reading from stdin while user may be typing.
+        - Use  `move_cursor_right_relative` for a reliable implementation.
+
         Note this does not keep track of the cursor, so it will go 'out of bounds' if you ask it to.
         """
         if n == 0:
             return True
+        elif callable(Console.get_console_cursor_offset):
+            Console.move_cursor_right_relative(n, Console.get_console_cursor_offset(), target_name)
+            return True
         elif n < 0: 
-            return Console.move_cursor_left(-n, target_name)
+            return Console.try_move_cursor_left(-n, target_name)
         with Console._LOCK:
             target = sys.stderr if target_name == 'stderr' else sys.stdout
             (maxcols, maxrows) = shutil.get_terminal_size()

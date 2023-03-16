@@ -112,7 +112,7 @@ class InteractiveConsole:
         """
         max_move = max(0, self.current_input_idx)
         n = min(n, max_move)
-        Console.move_cursor_left(n, 'stdout')
+        Console.move_cursor_left_relative(n, self.console_prompt_len + self.current_input_idx)
         self.current_input_idx -= n
     
     def move_cursor_right(self, n: int):
@@ -122,7 +122,7 @@ class InteractiveConsole:
         """
         max_move = max(0, len(self.current_input) - self.current_input_idx)
         n = min(n, max_move)
-        Console.move_cursor_right(n, 'stdout')
+        Console.move_cursor_right_relative(n, self.console_prompt_len + self.current_input_idx)
         self.current_input_idx += n
 
     def main_loop(self):
