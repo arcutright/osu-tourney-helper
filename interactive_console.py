@@ -162,6 +162,7 @@ class InteractiveConsole:
             sys.stdout.flush()
             sys.stderr.flush()
             line = self._readline()
+            if not line: continue
 
             # do something with finished line
             if line.lower() in ('\\q', '!q', '\\quit', '!quit'):
@@ -178,7 +179,7 @@ class InteractiveConsole:
                 except Exception as ex:
                     log.error(ex, exc_info=True)
     
-    def _readline(self):
+    def _readline(self) -> str:
         # loop over key presses during line input
         while not self.stop_event.is_set():
             try:
@@ -210,7 +211,6 @@ class InteractiveConsole:
                 self.current_input_idx = max(0, min(self.current_input_idx, len(self.current_input)))
 
                 if ch in (keycode.ENTER, keycode.CR, keycode.LF, keycode.ENTER_2):
-                    # current_input[::-1].index('')
                     self.inputs_list.append(self.current_input.copy())
                     self.inputs_idx = len(self.inputs_list)
                     w.write('\n')
@@ -257,50 +257,49 @@ class InteractiveConsole:
 
                 elif ch == keycode.HOME:
                     if self.current_input_idx > 0:
-                        # sys.stdout.write(f'\033[{self.current_input_idx}D') # backwards N columns
                         self.move_cursor_left(self.current_input_idx)
-                        # Console._write('\b'*self.current_input_idx)
                         self.current_input_idx = 0
 
                 elif ch == keycode.END:
-                    if self.current_input_idx < len(self.current_input):
-                        # sys.stdout.write(f'\033[{len(self.current_input) - self.current_input_idx}C') # forwards N columns
-                        # Console._write(''.join(self.current_input[self.current_input_idx:]))
-                        self.move_cursor_right(len(self.current_input) - self.current_input_idx)
-                        self.current_input_idx = len(self.current_input)
+                    n = len(self.current_input)
+                    if self.current_input_idx < n:
+                        self.move_cursor_right(n - self.current_input_idx)
+                        self.current_input_idx = n
                         
                 elif ch in keycode.BACKSPACE:
-                    if len(self.current_input) > 0 and self.current_input_idx > 0:
-                        n = len(self.current_input) - self.current_input_idx
+                    n = len(self.current_input)
+                    if n > 0 and self.current_input_idx > 0:
+                        nr = n - self.current_input_idx
                         
                         self.move_cursor_left(1)
-                        if n >= 0:
+                        if nr >= 0:
                             idx = self.current_input_idx
-                            if n > 0:
+                            if nr > 0:
                                 w.write(''.join(self.current_input[idx+1:]))
                             w.write(' ')
-                            self.current_input_idx = len(self.current_input)
-                            self.move_cursor_left(n + 1)
+                            self.current_input_idx = n
+                            self.move_cursor_left(nr + 1)
 
                             # update state
-                            if idx < len(self.current_input):
+                            if idx < n:
                                 del self.current_input[idx]
                             else:
                                 del self.current_input[-1]
 
                 elif ch in keycode.DELETE:
-                    n = len(self.current_input) - self.current_input_idx
-                    if len(self.current_input) > 0 and n > 0:
+                    n = len(self.current_input)
+                    nr = n - self.current_input_idx
+                    if n > 0 and nr > 0:
                         # overwrite the rest of the line with chars after the 'deleted char'
                         w.write(''.join(self.current_input[self.current_input_idx+1:]))
                         w.write(' ') # the extra array index at the end of the line
                         idx = self.current_input_idx
                         # restore cursor pos
-                        self.current_input_idx = len(self.current_input)
-                        self.move_cursor_left(n)
+                        self.current_input_idx = n
+                        self.move_cursor_left(nr)
 
                         # update state
-                        if idx < len(self.current_input):
+                        if idx < n:
                             del self.current_input[idx]
                         else:
                             del self.current_input[-1]
@@ -381,7 +380,7 @@ class InteractiveConsole:
                         self.current_input_idx = len(self.current_input)
                         # restore cursor pos
                         self.move_cursor_left(n)
-
+        return ""
 
 # -------------------------------------------------------------
 # dummy code to test the interactive console behavior

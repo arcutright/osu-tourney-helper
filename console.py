@@ -602,95 +602,97 @@ class Console:
 
         See related `try_restore_stdin_stdout_behavior`
         """
-        if not sys.stdout.isatty():
-            return
-        if Console.original_stdin_mode is not None:
-            return
-        
-        if os.name != 'nt':
-            try:
-                import termios
-                # disable ECHO and line mode for stdin
-                Console.original_stdin_mode = termios.tcgetattr(sys.stdin)
-                stdin_mode = termios.tcgetattr(sys.stdin)
-                stdin_mode[3] = stdin_mode[3] & ~(termios.ECHO | termios.ICANON)
-                termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, stdin_mode)
-            except Exception:
-                pass
-            return
-        try:
-            import psutil
-            parent_names = {parent.name().lower() for parent in psutil.Process().parents()}
-        except Exception:
-            parent_names = []
-
-        # print(f"console parent names: [{', '.join(parent_names)}]")
-        try:
-            # call kernel32 SetConsoleMode() to enable ANSI escape codes and disable ECHO/insert/line mode
-            import ctypes
-            import ctypes.wintypes
-            # https://learn.microsoft.com/en-us/windows/console/setconsolemode?redirectedfrom=MSDN#ENABLE_VIRTUAL_TERMINAL_PROCESSING
-            # GetStdHandle(-10): stdin, -11 = stdout
-            Console.original_stdin_mode = ctypes.wintypes.DWORD()
-            Console.original_stdout_mode = ctypes.wintypes.DWORD()
-            kernel32 = ctypes.windll.kernel32
-            kernel32.GetConsoleMode(kernel32.GetStdHandle(-10), ctypes.byref(Console.original_stdin_mode))
-            kernel32.GetConsoleMode(kernel32.GetStdHandle(-11), ctypes.byref(Console.original_stdout_mode))
-            kernel32.SetConsoleMode(kernel32.GetStdHandle(-10), 0x0200) # 0x0200 = ENABLE_VIRTUAL_TERMINAL_INPUT, 1 = ENABLE_PROCESSED_INPUT
-            kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 4 | 2 | 1) # ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_WRAP_AT_EOL_OUTPUT | ENABLE_PROCESSED_OUTPUT
-        except Exception:
-            if 'windowsterminal.exe' in parent_names:
-                return  # windows terminal has ANSI escape support by default
-            Console.enable_colors = False
-            print('---- Console colors have been disabled ---')
-            print('if you want colors, run this program from Windows Terminal')
-            print('(you may have to install from Microsoft Store)')
-            if not (('powershell.exe' in parent_names) or ('powershell' in parent_names)):
-                print('trying to spawn in powershell...')
+        with Console._LOCK:
+            if not sys.stdout.isatty():
+                return
+            if Console.original_stdin_mode is not None:
+                return
+            
+            if os.name != 'nt':
                 try:
-                    caller = os.path.abspath(sys.executable) or ''
-                    entrypoint = os.path.abspath(sys.argv[0])
-                    entrypoint_basename = os.path.basename(entrypoint)
-                    caller_program = os.path.splitext(os.path.basename(caller) or '')[0].lower()
-                    file_ext = (os.path.splitext(entrypoint)[1] or '').lower()
-                    print(f'caller: {caller}')
-                    print(f'entry : {entrypoint_basename}')
-
-                    # windows terminal (if installed): %LocalAppData%\Microsoft\WindowsApps\wt.exe
-
-                    # note: this fallback approach probably won't help
-                    # - for some goofy reason, in powershell, it only supports ansi escapes for _itself_ by default
-                    #   I read that sometimes you can cheat by doing '(.\test.exe)', not '& test.exe', but this is untested.
-                    if caller and ('python' in caller_program or 'pypy' in caller_program or file_ext in ('.py', '.py3')):
-                        p = subprocess.Popen(f'start powershell.exe -command "& """{caller}""" {entrypoint_basename}"', cwd=os.getcwd(), shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    else:
-                        p = subprocess.Popen(f'start powershell.exe -command "& """{entrypoint_basename}"""', cwd=os.getcwd(), shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-                    p.wait(2)
-                    if p.returncode is None: # process didn't die, it probably spawned ok
-                        Console.try_restore_stdin_stdout_behavior()
-                        sys.exit(0)
+                    import termios
+                    # disable ECHO and line mode for stdin
+                    Console.original_stdin_mode = termios.tcgetattr(sys.stdin)
+                    stdin_mode = termios.tcgetattr(sys.stdin)
+                    stdin_mode[3] = stdin_mode[3] & ~(termios.ECHO | termios.ICANON)
+                    termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, stdin_mode)
                 except Exception:
-                    traceback.print_exc()
+                    pass
+                return
+            try:
+                import psutil
+                parent_names = {parent.name().lower() for parent in psutil.Process().parents()}
+            except Exception:
+                parent_names = []
+
+            # print(f"console parent names: [{', '.join(parent_names)}]")
+            try:
+                # call kernel32 SetConsoleMode() to enable ANSI escape codes and disable ECHO/insert/line mode
+                import ctypes
+                import ctypes.wintypes
+                # https://learn.microsoft.com/en-us/windows/console/setconsolemode?redirectedfrom=MSDN#ENABLE_VIRTUAL_TERMINAL_PROCESSING
+                # GetStdHandle(-10): stdin, -11 = stdout
+                Console.original_stdin_mode = ctypes.wintypes.DWORD()
+                Console.original_stdout_mode = ctypes.wintypes.DWORD()
+                kernel32 = ctypes.windll.kernel32
+                kernel32.GetConsoleMode(kernel32.GetStdHandle(-10), ctypes.byref(Console.original_stdin_mode))
+                kernel32.GetConsoleMode(kernel32.GetStdHandle(-11), ctypes.byref(Console.original_stdout_mode))
+                kernel32.SetConsoleMode(kernel32.GetStdHandle(-10), 0x0200) # 0x0200 = ENABLE_VIRTUAL_TERMINAL_INPUT, 1 = ENABLE_PROCESSED_INPUT
+                kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 4 | 2 | 1) # ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_WRAP_AT_EOL_OUTPUT | ENABLE_PROCESSED_OUTPUT
+            except Exception:
+                if 'windowsterminal.exe' in parent_names:
+                    return  # windows terminal has ANSI escape support by default
+                Console.enable_colors = False
+                print('---- Console colors have been disabled ---')
+                print('if you want colors, run this program from Windows Terminal')
+                print('(you may have to install from Microsoft Store)')
+                if not (('powershell.exe' in parent_names) or ('powershell' in parent_names)):
+                    print('trying to spawn in powershell...')
+                    try:
+                        caller = os.path.abspath(sys.executable) or ''
+                        entrypoint = os.path.abspath(sys.argv[0])
+                        entrypoint_basename = os.path.basename(entrypoint)
+                        caller_program = os.path.splitext(os.path.basename(caller) or '')[0].lower()
+                        file_ext = (os.path.splitext(entrypoint)[1] or '').lower()
+                        print(f'caller: {caller}')
+                        print(f'entry : {entrypoint_basename}')
+
+                        # windows terminal (if installed): %LocalAppData%\Microsoft\WindowsApps\wt.exe
+
+                        # note: this fallback approach probably won't help
+                        # - for some goofy reason, in powershell, it only supports ansi escapes for _itself_ by default
+                        #   I read that sometimes you can cheat by doing '(.\test.exe)', not '& test.exe', but this is untested.
+                        if caller and ('python' in caller_program or 'pypy' in caller_program or file_ext in ('.py', '.py3')):
+                            p = subprocess.Popen(f'start powershell.exe -command "& """{caller}""" {entrypoint_basename}"', cwd=os.getcwd(), shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        else:
+                            p = subprocess.Popen(f'start powershell.exe -command "& """{entrypoint_basename}"""', cwd=os.getcwd(), shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                        p.wait(2)
+                        if p.returncode is None: # process didn't die, it probably spawned ok
+                            Console.try_restore_stdin_stdout_behavior()
+                            sys.exit(0)
+                    except Exception:
+                        traceback.print_exc()
 
     @staticmethod
     def try_restore_stdin_stdout_behavior():
         """Try to undo any changes made by `try_patch_stdin_stdout_behavior`"""
-        try:
-            if sys.platform == "win32":
-                import ctypes
-                kernel32 = ctypes.windll.kernel32
-                # GetStdHandle(-10): stdin, -11 = stdout
-                if Console.original_stdin_mode is not None:
-                    kernel32.SetConsoleMode(kernel32.GetStdHandle(-10), Console.original_stdin_mode)
-                if Console.original_stdout_mode is not None:
-                    kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), Console.original_stdout_mode)
-            else:
-                import termios
-                if Console.original_stdin_mode is not None:
-                    termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, Console.original_stdin_mode)
-        except Exception:
-            pass
-        finally:
-            Console.original_stdin_mode = None
-            Console.original_stdout_mode = None
+        with Console._LOCK:
+            try:
+                if os.name == 'nt':
+                    import ctypes
+                    kernel32 = ctypes.windll.kernel32
+                    # GetStdHandle(-10): stdin, -11 = stdout
+                    if Console.original_stdin_mode is not None:
+                        kernel32.SetConsoleMode(kernel32.GetStdHandle(-10), Console.original_stdin_mode)
+                    if Console.original_stdout_mode is not None:
+                        kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), Console.original_stdout_mode)
+                else:
+                    import termios
+                    if Console.original_stdin_mode is not None:
+                        termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, Console.original_stdin_mode)
+            except Exception:
+                pass
+            finally:
+                Console.original_stdin_mode = None
+                Console.original_stdout_mode = None
