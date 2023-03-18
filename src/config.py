@@ -85,9 +85,10 @@ class Config:
     response_timeout: float = 5.0
     motd_timeout: float = 3.0
     event_delay_timeout: float = 0.8
-    # debug settings
-    log_level: str = 'INFO'
+    # misc settings
+    log_level: logging._Level = 'INFO'
     enable_console_colors: bool = True
+    max_history_lines: int = 200
 
 class QuoteStrippingConfigParser(configparser.ConfigParser):
     def get(self, section, option, *, raw=False, vars=None, fallback=configparser._UNSET):
@@ -258,13 +259,15 @@ def parse_config() -> Config:
     if not cfg.initial_channel_password:
         cfg.initial_channel_password = cfgparser.get('startup', 'channel_password', fallback=cfg.initial_channel_password)
     
-    # [debug] section
-    cfg.enable_console_colors = cfgparser.getboolean('debug', 'enable_console_colors', fallback=cfg.enable_console_colors)
-    log_level: str = cfgparser.get('debug', 'log_level', fallback='')
+    # [misc] section
+    cfg.enable_console_colors = cfgparser.getboolean('misc', 'enable_console_colors', fallback=cfg.enable_console_colors)
+    cfg.max_history_lines = cfgparser.getint('misc', 'max_history_lines', fallback=cfg.max_history_lines)
+    log_level: str = cfgparser.get('misc', 'log_level', fallback='')
     if log_level and log_level.upper() in ['CRITICAL', 'FATAL', 'ERROR', 'WARN', 'WARNING', 'INFO', 'DEBUG']:
         cfg.log_level = log_level
     else:
         log.warn(f"Log level '{log_level}' not recognized, defaulting to INFO")
+        cfg.log_level = logging.INFO
     
     # [maps] section
     cfg.maps = []

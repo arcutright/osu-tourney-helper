@@ -211,6 +211,9 @@ class InteractiveConsole:
 
                 if ch in (keycode.ENTER, keycode.CR, keycode.LF, keycode.ENTER_2):
                     self.history.append(self.current_input.copy())
+                    if self.cfg.max_history_lines > 0 and len(self.history) > self.cfg.max_history_lines:
+                        i = len(self.history) - self.cfg.max_history_lines
+                        self.history = self.history[i:]
                     self.history_idx = len(self.history)
                     w.write('\n')
                     line = ''.join(self.current_input).strip()
