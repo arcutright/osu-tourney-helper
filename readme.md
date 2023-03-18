@@ -71,7 +71,9 @@ The "console" acts like a discount shell (bash, cmd, xterm, etc), and has suppor
 - `<UP>` to recall the previous command
 - `<DOWN>` to recall the next command
 - `<LEFT>`, `<RIGHT>`, `<BACKSPACE>`, `<DEL>`  have their normal functions
-- `<CTRL> + <V>` paste text from clipboard
+- `<CTRL + LEFT>` jump to beginning of current word
+- `<CTRL + RIGHT>` jump to beginning of next word
+- `<CTRL + V>` paste text from clipboard
 - `<HOME>` and `<END>` to jump to the beginning and end of the command entry. *Note: if the current command entry wraps across multiple lines, eg. if you are typing a long message, this will jump to the beginning and end of the message. Many shells would jump to beginning/end of the current line, but I decided to use the whole command.*
 - `<INS>` toggle insert mode (if you are in the middle of a message, this will overwrite chars instead of appending). The "console prompt" will have a yellow asterisk to indicate when you are in insert mode.
 

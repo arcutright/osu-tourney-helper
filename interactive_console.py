@@ -5,9 +5,10 @@ import shutil
 import multiprocessing
 from multiprocessing.synchronize import Event
 from typing import Union
-from readchar import readkey, key as keycode
 import pyperclip # clipboard support
 
+import readchar_extended.key as keycode
+from readchar_extended import readchar, readkey
 from helpers import value_or_fallback
 from console import Console, log
 from config import Config, parse_config
@@ -182,6 +183,13 @@ class InteractiveConsole:
         while not self.stop_event.is_set():
             try:
                 ch = readkey()
+                # uncomment this block for figuring out key codes in readchar_extended
+                # if keycode.is_special(ch):
+                #     # other control chars and combinations
+                #     print(f"special ch={[c.encode().hex() for c in ch]} or ch={list(ch)} (name: {keycode.name(ch)})")
+                # else:
+                #     print(f"ch={[c.encode().hex() for c in ch]}")
+                # continue
             except KeyboardInterrupt:
                 self._stopped = True
                 msg = (
@@ -201,7 +209,7 @@ class InteractiveConsole:
                 (self.maxcols, self.maxrows) = shutil.get_terminal_size()
                 self.current_input_idx = max(0, min(self.current_input_idx, len(self.current_input)))
 
-                if ch in (keycode.ENTER, keycode.CR, keycode.LF):
+                if ch in (keycode.ENTER, keycode.CR, keycode.LF, keycode.ENTER_2):
                     # current_input[::-1].index('')
                     self.inputs_list.append(self.current_input.copy())
                     self.inputs_idx = len(self.inputs_list)
@@ -221,11 +229,31 @@ class InteractiveConsole:
                         self.inputs_idx += 1
                     self.replace_current_stdin_with_history(w, self.inputs_idx)
 
+                # TODO: if SHIFT is held, should select while moving
                 elif ch == keycode.LEFT:
                     self.move_cursor_left(1)
-
+                    
                 elif ch == keycode.RIGHT:
                     self.move_cursor_right(1)
+
+                elif ch == keycode.CTRL_LEFT: # beginning of word
+                    if self.current_input_idx <= 1: continue
+                    # find index of first space, starting from the [current cursor pos]-1 and searching in reverse
+                    # idx-1 to avoid no-op when prev char is ' '
+                    n = len(self.current_input)
+                    num_moves_left = next((idx for idx, c in enumerate(reversed(self.current_input[:self.current_input_idx-1]), 1) if c == ' '), self.current_input_idx)
+                    if num_moves_left > 0:
+                        self.move_cursor_left(num_moves_left)
+
+                elif ch == keycode.CTRL_RIGHT: # beginning of next word
+                    n = len(self.current_input)
+                    if self.current_input_idx >= n-1: continue
+                    # find index of first space, starting from the [current cursor pos]+1
+                    # idx+1 to avoid no-op when next char is ' '
+                    # start enumerate at 2 to jump to first char in next word
+                    num_moves_right = next((idx for idx, c in enumerate(self.current_input[self.current_input_idx+1:], 2) if c == ' '), n-1 - self.current_input_idx)
+                    if num_moves_right > 0:
+                        self.move_cursor_right(num_moves_right)
 
                 elif ch == keycode.HOME:
                     if self.current_input_idx > 0:
@@ -324,11 +352,13 @@ class InteractiveConsole:
                     # TODO: support reverse-search? would be a lot of effort
                     continue
 
-                elif ch in (keycode.ESC):
+                elif ch in (keycode.ESC, keycode.ESC_2):
                     continue
 
-                elif ch not in (keycode.SPACE) and (ch in keycode.__dict__.values()):
+                elif ch != keycode.SPACE and keycode.is_special(ch):
                     # other control chars and combinations
+                    # if keycode.is_special(ch):
+                    #    print(f"special ch={[c.encode().hex() for c in ch]} or ch={list(ch)} (name: {keycode.name(ch)})")
                     continue
 
                 else:
