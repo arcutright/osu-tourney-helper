@@ -7,7 +7,7 @@ This tool has its own configuration and defines a handful of custom commands (se
 
 ## Configuration
 
-See `tourney.ini` for an example.  The first thing to do is to hit [https://osu.ppy.sh/p/irc](https://osu.ppy.sh/p/irc) to generate your "irc password". Then you can configure everything. Most of `tourney.ini` is heavily commented. Here is an example of the less obvious sections and how they behave.
+Configuration is done in [tourney.ini](./src/tourney.ini).  The first thing to do is to hit [https://osu.ppy.sh/p/irc](https://osu.ppy.sh/p/irc) to generate your "irc password". Then you can configure everything. Most of `tourney.ini` is heavily commented. Here is an example of the less obvious sections and how they behave.
 
 ```ini
 # refs are players who are given ref permissions via !addref once they join the room

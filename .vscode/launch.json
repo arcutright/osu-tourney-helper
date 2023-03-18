@@ -8,8 +8,8 @@
             "name": "osu! Tourney helper",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/osu_tourney_helper.py",
-            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/src/osu_tourney_helper.py",
+            "cwd": "${workspaceFolder}/src",
             "console": "integratedTerminal",
             "justMyCode": true
         }
