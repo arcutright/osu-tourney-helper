@@ -14,7 +14,7 @@ import urllib.error, urllib.request, urllib.response, urllib.parse
 import dateutil.parser
 import jaraco.logging
 
-from console import Console, log
+from console import Console, log, setup_logging
 
 @dataclass
 class MapInfo:
@@ -208,6 +208,7 @@ def parse_config() -> Config:
     argparser.add_argument('-i', '--ini', default='tourney.ini', help="path to ini file", required=False)
     jaraco.logging.add_arguments(argparser, default_level=logging.INFO)
     args = argparser.parse_args()
+    setup_logging(args.log_level)
 
     cfg = Config(username=args.username, password = args.password, nickname = args.nickname)
 
@@ -323,4 +324,5 @@ def parse_config() -> Config:
         exit(-1)
 
     cfg.nickname = cfg.nickname or cfg.username
+    setup_logging(cfg.log_level)
     return cfg
