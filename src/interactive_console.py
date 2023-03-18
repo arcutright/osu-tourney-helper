@@ -8,7 +8,7 @@ from typing import Union
 import pyperclip # clipboard support
 
 import readchar_extended.key as keycode
-from readchar_extended import readchar, readkey
+from readchar_extended import readkey
 from helpers import value_or_fallback
 from console import Console, log
 from config import Config, parse_config
@@ -26,11 +26,10 @@ class InteractiveConsole:
         self._stopped = False
 
         self.insert_mode = False
-        self.inputs_list: "list[list[str]]" = []
-        self.inputs_idx = 0
+        self.history: "list[list[str]]" = []
+        self.history_idx = 0
         self.current_input: "list[str]" = []
         self.current_input_idx = 0
-        self.prev_input_idx = 0
 
         (self.maxcols, self.maxrows) = shutil.get_terminal_size()
         self.console_prompt = self.get_console_prompt()
@@ -100,8 +99,8 @@ class InteractiveConsole:
             w.write(''.join(prev_input))
             self.current_input_idx = len(prev_input)
             self.move_cursor_left(len(prev_input) - prev_pos)
-        elif history_idx >= 0 and history_idx < len(self.inputs_list):
-            self.current_input.extend(self.inputs_list[history_idx])
+        elif history_idx >= 0 and history_idx < len(self.history):
+            self.current_input.extend(self.history[history_idx])
             # sys.stdout.write('\033[0m') # reset color
             w.write(''.join(self.current_input))
             self.current_input_idx = len(self.current_input)
@@ -211,8 +210,8 @@ class InteractiveConsole:
                 self.current_input_idx = max(0, min(self.current_input_idx, len(self.current_input)))
 
                 if ch in (keycode.ENTER, keycode.CR, keycode.LF, keycode.ENTER_2):
-                    self.inputs_list.append(self.current_input.copy())
-                    self.inputs_idx = len(self.inputs_list)
+                    self.history.append(self.current_input.copy())
+                    self.history_idx = len(self.history)
                     w.write('\n')
                     line = ''.join(self.current_input).strip()
                     self.current_input.clear()
@@ -220,14 +219,14 @@ class InteractiveConsole:
                     return line
 
                 elif ch == keycode.UP:
-                    if self.inputs_idx > 0: # >0 ensures UP never clears the console
-                        self.inputs_idx -= 1
-                    self.replace_current_stdin_with_history(w, self.inputs_idx)
+                    if self.history_idx > 0: # >0 ensures UP never clears the console
+                        self.history_idx -= 1
+                    self.replace_current_stdin_with_history(w, self.history_idx)
 
                 elif ch == keycode.DOWN:
-                    if self.inputs_idx <= len(self.inputs_list)-1:
-                        self.inputs_idx += 1
-                    self.replace_current_stdin_with_history(w, self.inputs_idx)
+                    if self.history_idx <= len(self.history)-1:
+                        self.history_idx += 1
+                    self.replace_current_stdin_with_history(w, self.history_idx)
 
                 # TODO: if SHIFT is held, should select while moving
                 elif ch == keycode.LEFT:

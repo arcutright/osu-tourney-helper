@@ -151,8 +151,8 @@ class OsuIRCBot(BaseOsuIRCBot):
             self.send_pm(self.cfg.bot_target, content)
             return
         
-        elif command.startswith(('stats', 'debug', 'config')):
-            if command.startswith(('debug', 'config')):
+        elif command in ('stats', 'debug', 'config'):
+            if command in ('debug', 'config'):
                 Console.writeln('--- config ---')
                 pp = pprint.PrettyPrinter(indent=2)
                 Console.writeln(pp.pformat(self.cfg))
@@ -160,7 +160,7 @@ class OsuIRCBot(BaseOsuIRCBot):
             self.do_command(IRCEvent('stats', '', ''), '')
             return
         
-        elif command.startswith(('mp maplist', 'mp map_list')):
+        elif command in ('mp maplist', 'mp map_list'):
             self.map_infos_populated_event.wait(1)
             if not self.map_infos_populated_event.is_set():
                 Console.writeln("Waiting (max 30s) for map infos to be populated (this is a one-time cost)")
@@ -172,7 +172,7 @@ class OsuIRCBot(BaseOsuIRCBot):
             self.set_response_event(delay=0)
             return
         
-        elif command.startswith(('mp inviteall', 'mp invite_all')):
+        elif command in ('mp inviteall', 'mp invite_all'):
             self.invite_participants()
             return
         
