@@ -1,0 +1,189 @@
+from readchar.key import *
+
+# this list was mostly made by manual testing, couldn't find a good reference doc
+
+DEL = DELETE
+INS = INSERT
+
+# not sure if posix has ENTER_2, ESC_2
+ESC_2 = ESC
+ENTER_2 = ENTER
+
+CTRL_UP    = '\x1b\x5b\x31\x3b\x35\x41'
+CTRL_DOWN  = '\x1b\x5b\x31\x3b\x35\x42'
+CTRL_RIGHT = '\x1b\x5b\x31\x3b\x35\x43'
+CTRL_LEFT  = '\x1b\x5b\x31\x3b\x35\x44'
+
+CTRL_HOME  = '\x1b\x5b\x31\x3b\x35\x48'
+CTRL_END   = '\x1b\x5b\x31\x3b\x35\x46'
+CTRL_INS   = '\x1b\x5b\x32\x3b\x35\x7e'
+CTRL_DEL   = '\x1b\x5b\x33\x3b\x35\x7e'
+# CTRL_TAB   = # not sure / hard to capture
+CTRL_PAGE_UP   = '\x1b\x5b\x35\x3b\x35\x7e'
+CTRL_PAGE_DOWN = '\x1b\x5b\x36\x3b\x35\x7e'
+
+# CTRL_BACKSPACE     = '\x08' # CTRL_H
+# CTRL_ENTER         = '\r' # ENTER
+# CTRL_LEFT_BRACKET  = '\x1b' # ESC
+# CTRL_RIGHT_BRACKET = '\x1d'
+# CTRL_BACKSLASH     = '\x1c'
+
+CTRL_F1   = '\x1b\x5b\x31\x3b\x35\x50'
+CTRL_F2   = '\x1b\x5b\x31\x3b\x35\x51'
+CTRL_F3   = '\x1b\x5b\x31\x3b\x35\x52'
+CTRL_F4   = '\x1b\x5b\x31\x3b\x35\x53'
+CTRL_F5   = '\x1b\x5b\x31\x35\x3b\x35\x7e'
+CTRL_F6   = '\x1b\x5b\x31\x37\x3b\x35\x7e'
+CTRL_F7   = '\x1b\x5b\x31\x38\x3b\x35\x7e'
+CTRL_F8   = '\x1b\x5b\x31\x39\x3b\x35\x7e'
+CTRL_F9   = '\x1b\x5b\x32\x30\x3b\x35\x7e'
+CTRL_F10  = '\x1b\x5b\x32\x31\x3b\x35\x7e'
+CTRL_F11  = '\x1b\x5b\x32\x33\x3b\x35\x7e'
+CTRL_F12  = '\x1b\x5b\x32\x34\x3b\x35\x7e'
+
+ALT_UP    = '\x1b\x5b\x31\x3b\x33\x41'
+ALT_DOWN  = '\x1b\x5b\x31\x3b\x33\x42'
+ALT_RIGHT = '\x1b\x5b\x31\x3b\x33\x43'
+ALT_LEFT  = '\x1b\x5b\x31\x3b\x33\x44'
+
+ALT_HOME  = '\x1b\x5b\x31\x3b\x33\x48'
+ALT_END   = '\x1b\x5b\x31\x3b\x33\x46'
+ALT_INS   = '\x1b\x5b\x32\x3b\x33\x7e'
+ALT_DEL   = '\x1b\x5b\x33\x3b\x33\x7e'
+# ALT_TAB = # not sure / hard to capture
+ALT_PAGE_UP   = '\x1b\x5b\x35\x3b\x33\x7e'
+ALT_PAGE_DOWN = '\x1b\x5b\x31\x3b\x33\x42'
+
+# TODO: more key codes
+ALT_A = '\x1ba'
+ALT_B = '\x1bb'
+# ALT_C = '\x1bc' # TODO: verify
+# ALT_D = '\x1bd' # TODO: verify
+ALT_E = '\x1be'
+ALT_F = '\x1bf'
+ALT_G = '\x1bg'
+ALT_H = '\x1bh'
+ALT_I = '\x1bi'
+ALT_J = '\x1bj'
+ALT_K = '\x1bk'
+ALT_L = '\x1bl'
+ALT_M = '\x1bm'
+ALT_N = '\x1bn'
+ALT_O = '\x1bo'
+ALT_P = '\x1bp'
+ALT_Q = '\x1bq'
+ALT_R = '\x1br'
+ALT_S = '\x1bs'
+ALT_T = '\x1bt'
+ALT_U = '\x1bu'
+ALT_V = '\x1bv'
+ALT_W = '\x1bw'
+ALT_X = '\x1bx'
+ALT_Y = '\x1by'
+ALT_Z = '\x1bz'
+
+ALT_F1  = '\x1b\x5b\x31\x3b\x33\x50'
+ALT_F2  = '\x1b\x5b\x31\x3b\x33\x51'
+ALT_F3  = '\x1b\x5b\x31\x3b\x33\x52'
+# ALT_F4  = '\x1b\x5b\x31\x3b\x33\x53' # TODO: verify
+ALT_F5  = '\x1b\x5b\x31\x35\x3b\x33\x7e'
+ALT_F6  = '\x1b\x5b\x31\x37\x3b\x33\x7e'
+ALT_F7  = '\x1b\x5b\x31\x38\x3b\x33\x7e'
+ALT_F8  = '\x1b\x5b\x31\x39\x3b\x33\x7e'
+ALT_F9  = '\x1b\x5b\x32\x30\x3b\x33\x7e'
+ALT_F10 = '\x1b\x5b\x32\x31\x3b\x33\x7e'
+ALT_F11 = '\x1b\x5b\x32\x33\x3b\x33\x7e'
+ALT_F12 = '\x1b\x5b\x32\x34\x3b\x33\x7e'
+
+SHIFT_LEFT  = '\x1b\x5b\x31\x3b\x32\x44'
+SHIFT_RIGHT = '\x1b\x5b\x31\x3b\x32\x43'
+SHIFT_UP    = '\x1b\x5b\x31\x3b\x32\x41'
+SHIFT_DOWN  = '\x1b\x5b\x31\x3b\x32\x42'
+SHIFT_HOME  = '\x1b\x5b\x31\x3b\x32\x48'
+SHIFT_END   = '\x1b\x5b\x31\x3b\x32\x46'
+# SHIFT_INS   = '\x1b\x5b\x32\x3b\x32\x7e' # TODO: verify
+SHIFT_DEL   = '\x1b\x5b\x33\x3b\x32\x7e'
+SHIFT_TAB   = '\x00\x5b\x5a'
+SHIFT_PAGE_UP   = '\x1b\x5b\x35\x3b\x32\x7e'
+SHIFT_PAGE_DOWN = '\x1b\x5b\x36\x3b\x32\x7e'
+
+SHIFT_F1  = '\x1b\x5b\x31\x3b\x32\x50'
+SHIFT_F2  = '\x1b\x5b\x31\x3b\x32\x51'
+SHIFT_F3  = '\x1b\x5b\x31\x3b\x32\x52'
+SHIFT_F4  = '\x1b\x5b\x31\x3b\x32\x53'
+SHIFT_F5  = '\x1b\x5b\x31\x35\x3b\x32\x7e'
+SHIFT_F6  = '\x1b\x5b\x31\x37\x3b\x32\x7e'
+SHIFT_F7  = '\x1b\x5b\x31\x38\x3b\x32\x7e'
+SHIFT_F8  = '\x1b\x5b\x31\x39\x3b\x32\x7e'
+SHIFT_F9  = '\x1b\x5b\x32\x30\x3b\x32\x7e'
+SHIFT_F10 = '\x1b\x5b\x32\x31\x3b\x32\x7e'
+SHIFT_F11 = '\x1b\x5b\x32\x33\x3b\x32\x7e'
+SHIFT_F12 = '\x1b\x5b\x32\x34\x3b\x32\x7e'
+
+CTRL_ALT_A = '\x1b\x01'
+CTRL_ALT_B = '\x1b\x02'
+CTRL_ALT_C = '\x1b\x03'
+CTRL_ALT_D = '\x1b\x04'
+CTRL_ALT_E = '\x1b\x05'
+CTRL_ALT_F = '\x1b\x06'
+CTRL_ALT_G = '\x1b\x07'
+CTRL_ALT_H = '\x1b\x08'
+CTRL_ALT_I = '\x1b\x09'
+CTRL_ALT_J = '\x1b\x0a'
+CTRL_ALT_K = '\x1b\x0b'
+CTRL_ALT_L = '\x1b\x0c'
+# CTRL_ALT_M = '\x1b\x0d' # TODO: saw the same code as CTRL_ALT_J, but surely it should be \x1b\x0d?
+CTRL_ALT_N = '\x1b\x0e'
+CTRL_ALT_O = '\x1b\x0f'
+CTRL_ALT_P = '\x1b\x10'
+# CTRL_ALT_Q = '\x1b\x11' # TODO: verify
+CTRL_ALT_R = '\x1b\x12'
+# CTRL_ALT_S = '\x1b\x13' # TODO: verify
+CTRL_ALT_T = '\x1b\x14'
+CTRL_ALT_U = '\x1b\x15'
+CTRL_ALT_V = '\x1b\x16'
+CTRL_ALT_W = '\x1b\x17'
+CTRL_ALT_X = '\x1b\x18'
+CTRL_ALT_Y = '\x1b\x19'
+CTRL_ALT_Z = '\x1b\x1a'
+
+CTRL_SPACE = '\x00'
+CTRL_ALT_SPACE = '\x1b\x00'
+
+# not sure how to capture
+# CTRL_ALT_[1-9]
+
+# CTRL_SHIFT_[A-Z]
+# CTRL_SHIFT_B = CTRL_B
+# CTRL_SHIFT_C = CTRL_C
+
+# ALT_SHIFT_[A-Z]
+ALT_SHIFT_A = '\x1bA'
+ALT_SHIFT_B = '\x1bB'
+ALT_SHIFT_C = '\x1bC'
+# ALT_SHIFT_D = '\x1bD' # TODO: verify
+ALT_SHIFT_E = '\x1bE'
+ALT_SHIFT_F = '\x1bF'
+ALT_SHIFT_G = '\x1bG'
+ALT_SHIFT_H = '\x1bH'
+ALT_SHIFT_I = '\x1bI'
+ALT_SHIFT_J = '\x1bJ'
+ALT_SHIFT_K = '\x1bK'
+ALT_SHIFT_L = '\x1bL'
+ALT_SHIFT_M = '\x1bM'
+ALT_SHIFT_N = '\x1bN'
+# ALT_SHIFT_O = '\x1bO' # TODO: verify
+ALT_SHIFT_P = '\x1bP'
+ALT_SHIFT_Q = '\x1bQ'
+ALT_SHIFT_R = '\x1bR'
+ALT_SHIFT_S = '\x1bS'
+ALT_SHIFT_T = '\x1bT'
+ALT_SHIFT_U = '\x1bU'
+ALT_SHIFT_V = '\x1bV'
+ALT_SHIFT_W = '\x1bW'
+ALT_SHIFT_X = '\x1bX'
+ALT_SHIFT_Y = '\x1bY'
+ALT_SHIFT_Z = '\x1bZ' 
+
+# TODO: saw this while going through the ALT_SHIFT_ codes but not sure how to trigger it
+# '\x1b\x5b\x3f\x31\x3b\x30\x63'
