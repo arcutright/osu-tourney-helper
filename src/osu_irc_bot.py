@@ -111,6 +111,12 @@ class OsuIRCBot(BaseOsuIRCBot):
             self.send_message(self.room_id, f"!mp invite {ref}")
         self.send_message(self.room_id, f"!mp addref {' '.join(self.cfg.refs)}") # may need them to be in the room first...
 
+    def refers_to_ref(self, userstr: str):
+        """ Check if userstr refers to a user who is a ref for the room """
+        user = self.get_user(userstr)
+        # TODO: track if refs are added
+        return self.refers_to_self(user) or user in self.cfg.refs
+
     ## ----------------------------------------------------------------------
 
     def lookup_map(self, label: str):
@@ -138,49 +144,129 @@ class OsuIRCBot(BaseOsuIRCBot):
         """
         content = content.strip()
         command = content.lower()
-        map_choice = None
-        mapid = ''
-        is_map_request = False
         is_command = command.startswith(('/', '!'))
         command = '' if not is_command else command[1:]
 
-        if command.startswith(('help', 'mp help')):
-            Console.writeln('--- extra commands, not in bancho ---')
-            Console.writeln('!stats             see joined channel stats')
-            Console.writeln('!debug, !config    see the current config in the .ini file + joined channel stats')
-            Console.writeln('!mp invite_all     invite all players and admins configured in the .ini file')
-            Console.writeln('!mp map <label>    choose map based on label configured in the .ini file (eg: !mp map hd1)')
-            Console.writeln('!mp map_list       list all maps currently configured')
-            Console.writeln('--- bancho help ---')
-            self.send_pm(self.cfg.bot_target, content)
+        if self._handle_command(content):
             return
         
-        elif command in ('stats', 'debug', 'config'):
+        if self.room_id and not command.startswith('mp make'):
+            self.send_message(self.room_id, content)
+        else:
+            self.send_pm(self.cfg.bot_target, content)
+        
+        # no response expected for plain messages to a room
+        if not is_command:
+            self.set_response_event(delay=0)
+
+    def _handle_command(self, content: str, source='@@bot'):
+        """ Handle if someone sends a custom command (eg: '!mp map hd2'). \n
+        If this isn't a custom command, this method does nothing.
+
+        params:
+          `content`: the entire message (eg: '!mp map hd2')
+          `source`: The source of this command. Either '@@bot' or username of player in room who sent this.
+            Uses '@@bot' to refer to the bot because it would be an invalid username.
+        returns:
+          `True` if it was a custom command and was handled; otherwise `False`
+        """
+        content = content.strip()
+        command = content.lower()
+        is_command = command.startswith(('/', '!'))
+        if not is_command:
+            return False
+        
+        command = command[1:]
+
+        if command.startswith(('help', 'mp help')):
+            help_lines = [
+                '--- extra commands, not in bancho ---',
+                '!mp map <label>  choose map based on label configured in the .ini file (eg: !mp map hd1)',
+                '!mp map_list     list all maps currently configured (alt: !mp maplist)',
+                '!mirror          show alternate download links for the current map',
+                '!link            show match history link (alt: !room_link, !roomlink, !mp link)'
+            ]
+            ref_help_lines = [
+                '!mp invite_all   (refs only) invite all players and admins configured in the .ini file (alt: !mp inviteall)'
+            ]
+            private_help_lines = [
+                '!stats           see joined channel stats',
+                '!debug, !config  see the current config in the .ini file + joined channel stats',
+            ]
+            if source == '@@bot' or not self.room_id:
+                for msg in help_lines:
+                    Console.writeln(msg)
+                for msg in ref_help_lines:
+                    Console.writeln(msg)
+                for msg in private_help_lines:
+                    Console.writeln(msg)
+                Console.writeln('--- bancho help ---')
+                self.send_pm(self.cfg.bot_target, content)
+            else:
+                for msg in help_lines:
+                    self.send_message(self.room_id, msg)
+                if self.refers_to_ref(source):
+                    for msg in ref_help_lines:
+                        self.send_message(self.room_id, msg)
+            return True
+        
+        elif source == '@@bot' and command in ('stats', 'debug', 'config'):
             if command in ('debug', 'config'):
                 Console.writeln('--- config ---')
                 pp = pprint.PrettyPrinter(indent=2)
                 Console.writeln(pp.pformat(self.cfg))
                 Console.writeln('--- !stats ---')
             self.do_command(IRCEvent('stats', '', ''), '')
-            return
+            return True
+
+        elif (source == '@@bot' or self.refers_to_ref(source)) and command in ('mp inviteall', 'mp invite_all'):
+            self.invite_participants()
+            return True
+        
+        elif command in ('mirror', 'mirrors'):
+            self.say_mirrors()
+            return True
+        
+        elif command in ('link', '!mp link', 'room_link', 'roomlink') and self.room_link:
+            if source == '@@bot':
+                Console.writeln(self.room_link)
+                self.set_response_event(delay=0)
+            else:
+                self.send_message(self.room_id, f"Match history available [{self.room_link} here].")
+            return True
         
         elif command in ('mp maplist', 'mp map_list'):
-            self.map_infos_populated_event.wait(1)
-            if not self.map_infos_populated_event.is_set():
-                Console.writeln("Waiting (max 30s) for map infos to be populated (this is a one-time cost)")
-                self.map_infos_populated_event.wait(30)
-            Console.writeln(f"{'label':<8}  {'mapid':<9}  {'mods':<12}  {'map link':<38}  {'map description'}")
-            Console.writeln(f"{'-'*8}  {'-'*9}  {'-'*12}  {'-'*38} {'-'*20}")
-            for mc in self.cfg.maps:
-                Console.writeln(f"{mc.label:<8}  {mc.mapid:>9}  {mc.mods:<12}  {mc.get_osu_link():<38}  {mc.description}")
-            self.set_response_event(delay=0)
-            return
-        
-        elif command in ('mp inviteall', 'mp invite_all'):
-            self.invite_participants()
-            return
+            if source == '@@bot':
+                self.map_infos_populated_event.wait(1)
+                if not self.map_infos_populated_event.is_set():
+                    Console.writeln("Waiting (max 30s) for map infos to be populated (this is a one-time cost)")
+                    self.map_infos_populated_event.wait(30)
+                Console.writeln(f"{'label':<8}  {'mapid':<9}  {'mods':<12}  {'map link':<38}  {'map description'}")
+                Console.writeln(f"{'-'*8}  {'-'*9}  {'-'*12}  {'-'*38} {'-'*20}")
+                for mc in self.cfg.maps:
+                    Console.writeln(f"{mc.label:<8}  {mc.mapid:>9}  {mc.mods:<12}  {mc.get_osu_link():<38}  {mc.description}")
+                self.set_response_event(delay=0)
+                return True
+            elif self.room_id:
+                self.map_infos_populated_event.wait(1)
+                if not self.map_infos_populated_event.is_set():
+                    Console.writeln("Waiting (max 30s) for map infos to be populated (this is a one-time cost)")
+                    self.map_infos_populated_event.wait(30)
+                self.send_message(self.room_id, f"{'label':<8}  {'mapid':<9}  {'mods':<12}  {'map description'}")
+                self.send_message(self.room_id, f"{'-'*8}  {'-'*9}  {'-'*12}  {'-'*20}")
+                for mc in self.cfg.maps:
+                    link = mc.get_osu_link(format=False)
+                    label = f"[{link} {mc.label}]" + (' '*max(0, 8 - len(mc.label)))
+                    self.send_message(self.room_id, f"{label}  {mc.mapid:>9}  {mc.mods:<12}  {mc.description}")
+                return True
         
         elif command.startswith('mp map'):
+            # TODO: restrict players from changing the map?
+            # (only makes sense once we implement tracking for who is host, whose turn it is, etc.)
+            #if source != '@@bot' and not self.refers_to_ref(source):
+            #    self.send_message(self.room_id, 'for now, only refs can change the map')
+            #    return True
+
             aftermap = content[content.index('map')+4:]
             # two valid cases here. The wacky logic is to handle if map label has spaces and ends with a number
             # 1. !mp map <mapid> [<playmode>]
@@ -196,21 +282,16 @@ class OsuIRCBot(BaseOsuIRCBot):
                     map_choice = self.lookup_map(mapid)
             if map_choice is not None:
                 mapid = str(map_choice.mapid)
-            content = f'!mp map {mapid}{rhs}'
-            is_map_request = True
-
-        if self.room_id and not command.startswith('mp make'):
-            self.send_message(self.room_id, content)
-        else:
-            self.send_pm(self.cfg.bot_target, content)
-
-        if is_map_request and self.room_id and map_choice:
-            self.send_message(self.room_id, f'!mp set {map_choice.teammode} {map_choice.scoremode}')
-            self.send_message(self.room_id, f'!mp mods {map_choice.mods}')
+            if self.room_id and map_choice:
+                self.send_message(self.room_id, f'!mp map {mapid}{rhs}')
+                self.send_message(self.room_id, f'!mp set {map_choice.teammode} {map_choice.scoremode}')
+                self.send_message(self.room_id, f'!mp mods {map_choice.mods}')
+                return True
+            elif source == '@@bot':
+                self.send_message(self.room_id, f'!mp map {mapid}{rhs}')
+                return True
         
-        # no response expected for plain messages to a room
-        if not is_command:
-            self.set_response_event(delay=0)
+        return False
 
     ## ----------------------------------------------------------------------
     #  join / welcome / message of the day handling
@@ -345,10 +426,10 @@ class OsuIRCBot(BaseOsuIRCBot):
         if not msg: return
 
         if self.refers_to_server(event.source):
-            msgl = msg.lower()
             # when the beatmap changes in the room
             # 21:29 BanchoBot: Beatmap changed to: Cartoon - Why We Lose (ft. Coleman Trapp) [Hobbes2's Light Insane] (https://osu.ppy.sh/b/1291655)
             # 22:23 BanchoBot: Changed beatmap to https://osu.ppy.sh/b/2538074 Demetori - Hoshi no Utsuwa ~ Casket of Star
+            msgl = msg.lower()
             if msgl.startswith(('beatmap changed', 'changed beatmap')):
                 self.room_map = None
                 i = msgl.rfind('http')
@@ -364,6 +445,8 @@ class OsuIRCBot(BaseOsuIRCBot):
                         if mapid is not None:
                             self.room_map = try_get_map_info(mapid)
                 self.say_mirrors()
+        else:
+            self._handle_command(msg, event.source)
 
         msg2 = self._message_prelude(event) + self._color_message(msg, event)
         self.do_command(event, msg2)

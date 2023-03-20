@@ -139,11 +139,13 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
 
     def get_user(self, userstr: str):
         """Grab user name from either 'user' or 'user!cho@ppy.sh'"""
+        if not userstr: return ''
         i = userstr.rfind('!')  # example: ':Nhato!cho@ppy.sh QUIT :quit', source='Nhato!cho@ppy.sh'
         return userstr[:i] if i > 0 else userstr
     
     def refers_to_self(self, name: str):
         """Check if name refers to this bot's irc name/nickname (this calls get_user(name), it can handle 'user!cho@ppy.sh')"""
+        if not name: return False
         ircname = irc_lower(self.connection.ircname)
         nickname = irc_lower(self.connection.get_nickname())
         name = irc_lower(self.get_user(name))
@@ -151,6 +153,7 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
     
     def refers_to_server(self, name: str):
         """Check if name refers to bot_target (BanchoBot) irc name/nickname or the server itself (this calls get_user(name), it can handle 'user!cho@ppy.sh')"""
+        if not name: return False
         ircname = irc_lower(self.bot_target)
         name = irc_lower(self.get_user(name))
         return (name == ircname
