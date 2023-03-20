@@ -15,6 +15,7 @@ import dateutil.parser
 import jaraco.logging
 
 from console import Console, log, setup_logging
+from helpers import try_int
 
 @dataclass
 class MapInfo:
@@ -34,6 +35,19 @@ class MapInfo:
     difficulty_rating: float
     is_ranked: bool
     last_updated: "Union[datetime, None]" = None
+    
+    def get_osu_link(self, format=False) -> str:
+        """ Get a link to download beatmap from osu! \n
+        `format=True` will make it return '[link alias]' for each link, which shows the alias in the osu! lobby
+        """
+        return get_osu_link(self.mapid, format)
+    
+    def get_mirror_links(self, format=False) -> "list[str]":
+        """ Get mirror links to download beatmap. \n
+        `format=True` will make it return '[link alias]' for each link, which shows the alias in the osu! lobby
+        """
+        if not self.setid: return []
+        return get_mirror_links(self.setid, format)
 
 @dataclass
 class MapChoice:
@@ -44,20 +58,20 @@ class MapChoice:
     """ Friendly map string, like 'artist - title [diff] (creator)' """
     map_info: "Union[MapInfo, None]" = None
     """ All map info from public apis, if available """
-
-    def get_osu_link(self):
-        """ Get a link to download beatmap from osu! """
-        if not self.mapid: return ""
-        return f"https://osu.ppy.sh/beatmaps/{self.map_info.mapid}"
     
-    def get_mirror_links(self):
-        """ Get mirror links to download beatmap """
+    def get_osu_link(self, format=False) -> str:
+        """ Get a link to download beatmap from osu! \n
+        `format=True` will make it return '[link alias]' for each link, which shows the alias in the osu! lobby
+        """
+        return get_osu_link(self.mapid, format)
+    
+    def get_mirror_links(self, format=False) -> "list[str]":
+        """ Get mirror links to download beatmap. \n
+        `format=True` will make it return '[link alias]' for each link, which shows the alias in the osu! lobby
+        """
         if not self.map_info: return []
-        return [f"https://kitsu.moe/api/d/{self.map_info.setid}",
-                f"https://api.chimu.moe/v1/download/{self.map_info.setid}",
-                f"https://beatconnect.io/b/{self.map_info.setid}",
-                f"https://api.nerinyan.moe/d/{self.map_info.setid}"]
-
+        return get_mirror_links(self.map_info.setid, format)
+    
 @dataclass
 class Config:
     # irc credentials
@@ -90,10 +104,37 @@ class Config:
     enable_console_colors: bool = True
     max_history_lines: int = 200
 
+
+def get_osu_link(mapid: int, format=False) -> str:
+    """ Get a link to download beatmap from osu! \n
+    `format=True` will make it return '[link alias]' for each link, which shows the alias in the osu! lobby
+    """
+    if not mapid: return ""
+    link = (f"https://osu.ppy.sh/b/{mapid}", "osu.ppy.sh")
+    return f"[{link[0]} {link[1]}]" if format else link[0]
+
+def get_mirror_links(setid: int, format=False) -> "list[str]":
+    """ Get mirror links to download mapset. \n
+    `format=True` will make it return '[link alias]' for each link, which shows the alias in the osu! lobby
+    """
+    if not setid: return []
+    links = [
+        (f"https://api.chimu.moe/v1/download/{setid}", "chimu.moe"),
+        (f"https://kitsu.moe/api/d/{setid}", "kitsu.moe", ),
+        (f"https://beatconnect.io/b/{setid}", "beatconnect.io"),
+        (f"https://api.nerinyan.moe/d/{setid}", "nerinyan.moe")
+    ]
+    if format:
+        return [f"[{link[0]} {link[1]}]" for link in links]
+    else:
+        return [link[0] for link in links]
+
+
 class QuoteStrippingConfigParser(configparser.ConfigParser):
     def get(self, section, option, *, raw=False, vars=None, fallback=configparser._UNSET):
         val = configparser.ConfigParser.get(self, section, option, raw=raw, vars=vars, fallback=fallback)
         return val.strip().strip('"').strip('\'')
+
 
 # context to ignore ssl cert issues
 ssl_ctx = ssl.create_default_context()

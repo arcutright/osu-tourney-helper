@@ -10,8 +10,8 @@ from irc.client import (
     Event as IRCEvent
 )
 
-from helpers import value_or_fallback
-from config import Config
+from helpers import value_or_fallback, try_int
+from config import Config, MapInfo, MapChoice, try_get_map_info
 from console import Console, log
 from irc_bot import BaseOsuIRCBot
 
@@ -34,6 +34,7 @@ class OsuIRCBot(BaseOsuIRCBot):
         self.raw_commands = value_or_fallback(cfg.raw_commands, [])
 
         self.room_id = ''
+        self.room_map: "Union[MapInfo, None]" = None
         self.__creating_room = False
         self.__closing_room = False
 
@@ -137,7 +138,8 @@ class OsuIRCBot(BaseOsuIRCBot):
         """
         content = content.strip()
         command = content.lower()
-        map = None
+        map_choice = None
+        mapid = ''
         is_map_request = False
         is_command = command.startswith(('/', '!'))
         command = '' if not is_command else command[1:]
@@ -169,8 +171,8 @@ class OsuIRCBot(BaseOsuIRCBot):
                 self.map_infos_populated_event.wait(30)
             Console.writeln(f"{'label':<8}  {'mapid':<9}  {'mods':<12}  {'map link':<38}  {'map description'}")
             Console.writeln(f"{'-'*8}  {'-'*9}  {'-'*12}  {'-'*38} {'-'*20}")
-            for map in self.cfg.maps:
-                Console.writeln(f"{map.label:<8}  {map.mapid:>9}  {map.mods:<12}  {map.get_osu_link():<38}  {map.description}")
+            for mc in self.cfg.maps:
+                Console.writeln(f"{mc.label:<8}  {mc.mapid:>9}  {mc.mods:<12}  {mc.get_osu_link():<38}  {mc.description}")
             self.set_response_event(delay=0)
             return
         
@@ -185,15 +187,15 @@ class OsuIRCBot(BaseOsuIRCBot):
             # 2. !mp map <map label> [<playmode>]
             mapid = aftermap.strip().upper()
             rhs = ''
-            map = self.lookup_map(mapid)
-            if map is None:
+            map_choice = self.lookup_map(mapid)
+            if map_choice is None:
                 i = aftermap.rfind(' ')
                 if i != -1:
                     mapid = aftermap[:i].upper().strip()
                     rhs = aftermap[i:]
-                    map = self.lookup_map(mapid)
-            if map is not None:
-                mapid = str(map.mapid)
+                    map_choice = self.lookup_map(mapid)
+            if map_choice is not None:
+                mapid = str(map_choice.mapid)
             content = f'!mp map {mapid}{rhs}'
             is_map_request = True
 
@@ -202,14 +204,10 @@ class OsuIRCBot(BaseOsuIRCBot):
         else:
             self.send_pm(self.cfg.bot_target, content)
 
-        if is_map_request and self.room_id and map:
-            self.send_message(self.room_id, f'!mp set {self.cfg.teammode} {self.cfg.scoremode}')
-            self.send_message(self.room_id, f'!mp mods {map.mods}')
-            mirrors = map.get_mirror_links()
-            if mirrors:
-                self.send_message(self.room_id, "------ mirror links -------")
-                self.send_message(self.room_id, ' | '.join(mirrors))
-
+        if is_map_request and self.room_id and map_choice:
+            self.send_message(self.room_id, f'!mp set {map_choice.teammode} {map_choice.scoremode}')
+            self.send_message(self.room_id, f'!mp mods {map_choice.mods}')
+        
         # no response expected for plain messages to a room
         if not is_command:
             self.set_response_event(delay=0)
@@ -312,6 +310,13 @@ class OsuIRCBot(BaseOsuIRCBot):
             if ircname in msgl or nickname in msgl:
                 return ''.join(('\033[38;5;120m', msg, '\033[0m')) # light green foreground
         return msg
+    
+    def say_mirrors(self):
+        """ If `room_map` is known, sends a message to the room with mirror links to download the map """
+        if not self.room_id or not self.room_map: return
+        mirrors = [self.room_map.get_osu_link(format=True)] + self.room_map.get_mirror_links(format=True)
+        msg = 'beatmap mirrors: ' + ' | '.join(mirrors)
+        self.send_message(self.room_id, msg)
 
     def on_privmsg(self, conn: IRCServerConnection, event: IRCEvent):
         if not event.arguments: return
@@ -338,6 +343,28 @@ class OsuIRCBot(BaseOsuIRCBot):
         if not event.arguments: return
         msg = str(event.arguments[0]).rstrip()
         if not msg: return
+
+        if self.refers_to_server(event.source):
+            msgl = msg.lower()
+            # when the beatmap changes in the room
+            # 21:29 BanchoBot: Beatmap changed to: Cartoon - Why We Lose (ft. Coleman Trapp) [Hobbes2's Light Insane] (https://osu.ppy.sh/b/1291655)
+            # 22:23 BanchoBot: Changed beatmap to https://osu.ppy.sh/b/2538074 Demetori - Hoshi no Utsuwa ~ Casket of Star
+            if msgl.startswith(('beatmap changed', 'changed beatmap')):
+                self.room_map = None
+                i = msgl.rfind('http')
+                if i >= 0:
+                    j = msgl.find(')', i)
+                    if j < 0: j = msgl.find(' ', i)
+                    if j < 0: j = len(msgl)
+                    link = msgl[i:j]
+                    i = link.rfind('/')
+                    if i >= 0:
+                        mapid_str = link[i+1:]
+                        mapid = try_int(mapid_str, None)
+                        if mapid is not None:
+                            self.room_map = try_get_map_info(mapid)
+                self.say_mirrors()
+
         msg2 = self._message_prelude(event) + self._color_message(msg, event)
         self.do_command(event, msg2)
         return
