@@ -11,8 +11,8 @@ import irc.client
 import irc.connection
 import jaraco.stream.buffer
 
-from console import Console, log, setup_logging
-from config import MapChoice, Config, parse_config, try_populate_map_info
+from console import Console, log
+from config import Config, parse_config, try_populate_map_info
 from interactive_console import InteractiveConsole, test_interactive_console
 from osu_irc_bot import OsuIRCBot
 

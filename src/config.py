@@ -4,19 +4,14 @@ import traceback
 import argparse
 import configparser
 import logging
-import json
 import ast
-import ssl
 from dataclasses import dataclass, field
 from typing import Union, Tuple
-from http.client import HTTPResponse
 from datetime import datetime, timedelta
-import urllib.error, urllib.request, urllib.response, urllib.parse
-import dateutil.parser
 import jaraco.logging
 
 from console import Console, log, setup_logging
-from helpers import try_int
+from helpers import try_int, parse_datetime, get_many, try_json_get
 
 @dataclass
 class MapInfo:
@@ -136,60 +131,6 @@ def get_mirror_links(setid: int, format=False) -> "list[str]":
     else:
         return [link[0] for link in links]
 
-
-class QuoteStrippingConfigParser(configparser.ConfigParser):
-    def get(self, section, option, *, raw=False, vars=None, fallback=configparser._UNSET):
-        val = configparser.ConfigParser.get(self, section, option, raw=raw, vars=vars, fallback=fallback)
-        return val.strip().strip('"').strip('\'')
-
-
-# context to ignore ssl cert issues
-ssl_ctx = ssl.create_default_context()
-ssl_ctx.check_hostname = False
-ssl_ctx.verify_mode = ssl.CERT_NONE
-
-def parse_datetime(datestr: str) -> "Union[datetime, None]":
-    try:
-        return dateutil.parser.parse(datestr)
-    except Exception:
-        try:
-            return datetime.strptime(datestr, '%Y-%m-%dT%H:%M:%S.%fZ')
-        except Exception:
-            return None
-
-def try_json_get(url: str, lower_keys=True):
-    try:
-        log.debug(f"try to hit {url}")
-        headers = {
-            'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/110.0',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        }
-        req = urllib.request.Request(url, headers=headers, method='GET')
-        resp: HTTPResponse = urllib.request.urlopen(req, context=ssl_ctx)
-        if resp.status != 200:
-            return {}
-        data: bytes = resp.read()
-        raw_json = json.loads(data.decode())
-        if not lower_keys:
-            return raw_json
-        else:
-            return {key.lower(): raw_json[key] for key in raw_json}
-    except urllib.error.HTTPError as err:
-        if err.code == 404:
-            log.debug(f"Not found: {url}")
-            return {}
-        elif err.code >= 400 and err.code < 500:
-            return {}
-        log.warn(f"{url} : {err.code} {err.reason}")
-        return {}
-    except Exception as ex:
-        log.warn(f"Unexpected error from {url}: {ex}")
-        return {} 
-
-def get_many(d: dict, *keys, default=None):
-    return next((d[key] for key in keys if key in d), default)
- 
 def try_get_map_info(mapid: int, label: str = '') -> "Union[MapInfo, None]":
     """Try to get a map's info (set name, diff name, etc.) from public apis"""
     if mapid is None: return None
@@ -249,6 +190,11 @@ def try_populate_map_info(map: MapChoice):
     map.map_info = mi
     return mi
 
+
+class QuoteStrippingConfigParser(configparser.ConfigParser):
+    def get(self, section, option, *, raw=False, vars=None, fallback=configparser._UNSET):
+        val = configparser.ConfigParser.get(self, section, option, raw=raw, vars=vars, fallback=fallback)
+        return val.strip().strip('"').strip('\'')
 
 def parse_config() -> Config:
     # read command line args
