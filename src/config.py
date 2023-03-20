@@ -5,6 +5,7 @@ import argparse
 import configparser
 import logging
 import json
+import ast
 import ssl
 from dataclasses import dataclass, field
 from typing import Union, Tuple
@@ -52,10 +53,16 @@ class MapInfo:
 @dataclass
 class MapChoice:
     label: str
+    """ Uppercase tournament label for map following common conventions. eg: 'HD1', 'DTHR2', etc. """
+    alias: str
+    """ Optional alias for map label provided by user. Defaults to `label` """
+    # labels_lookup: "set[str]" # TODO: all lowercase + support alt formats, like 'hr 1' -> 'hr1' or 'hrhd1' -> 'hdhr1'
     mapid: int
     mods: str
+    teammode: int  # 0: head to head, 1: tag coop, 2: team vs, 3: tag team vs
+    scoremode: int  # 0: score, 1: accuracy, 2: combo, 3: score v2
     description: str
-    """ Friendly map string, like 'artist - title [diff] (creator)' """
+    """ Friendly map string, eg 'artist - title [diff] (creator)' """
     map_info: "Union[MapInfo, None]" = None
     """ All map info from public apis, if available """
     
@@ -82,7 +89,7 @@ class Config:
     room_name: str = 'my tournament room'
     room_password: str = 'placeholder'
     teammode: int = 0  # 0: head to head, 1: tag coop, 2: team vs, 3: tag team vs
-    scoremode: int = 3   # 0: score, 1: accuracy, 2: combo, 3: score v2
+    scoremode: int = 3  # 0: score, 1: accuracy, 2: combo, 3: score v2
     always_use_nf: bool = True
     raw_commands: "list[str]" = field(default_factory=list)
     # referees, players, maps
@@ -242,6 +249,7 @@ def try_populate_map_info(map: MapChoice):
     map.map_info = mi
     return mi
 
+
 def parse_config() -> Config:
     # read command line args
     argparser = argparse.ArgumentParser()
@@ -260,7 +268,7 @@ def parse_config() -> Config:
         sys.stderr.write("Error: You must provide your osu! username\n")
         exit(404)
 
-    cfgparser = QuoteStrippingConfigParser(allow_no_value=True)
+    cfgparser = QuoteStrippingConfigParser(allow_no_value=True, interpolation=None)
     cfgparser.read(args.ini)
 
     # [credentials] section
@@ -274,7 +282,10 @@ def parse_config() -> Config:
     # [room] section
     cfg.room_name = cfgparser.get('room', 'room_name', fallback=cfg.room_name)
     cfg.room_password = cfgparser.get('room', 'room_password', fallback=cfg.room_password)
-    cfg.teammode = cfgparser.getint('room', 'teammode', fallback=cfg.teammode) 
+    # TODO: support friendly names for teammode/scoremode?
+    # teammode; 0: head to head, 1: tag coop, 2: team vs, 3: tag team vs
+    cfg.teammode = cfgparser.getint('room', 'teammode', fallback=cfg.teammode)
+    # scoremode; 0: score, 1: accuracy, 2: combo, 3: score v2
     cfg.scoremode = cfgparser.getint('room', 'scoremode', fallback=cfg.scoremode)
     cfg.always_use_nf = cfgparser.getboolean('room', 'always_use_nf', fallback=cfg.always_use_nf)
 
@@ -314,10 +325,30 @@ def parse_config() -> Config:
     # [maps] section
     cfg.maps = []
     if 'maps' in cfgparser:
-        for rawlabel in cfgparser['maps']:
-            mapid = cfgparser.getint("maps", rawlabel, fallback=None)
-            if mapid is None: continue
-            label = rawlabel.upper().strip()
+        for raw_label in cfgparser['maps']:
+            label = raw_label.upper().strip()
+            alias = label
+            try:
+                mapid = cfgparser.getint('maps', raw_label, fallback=None)
+            except Exception:
+                mapid = None
+            if mapid is not None:
+                teammode = cfg.teammode
+                scoremode = cfg.scoremode
+            else:
+                raw_value = cfgparser.get('maps', raw_label, fallback='')
+                try:
+                    mapdict: dict = ast.literal_eval(raw_value)
+                    alias = mapdict.get('alias', label).strip()
+                    mapid = try_int(mapdict.get('mapid', None))
+                    teammode = try_int(mapdict.get('teammode', None), cfg.teammode)
+                    scoremode = try_int(mapdict.get('scoremode', None), cfg.scoremode)
+                except Exception:
+                    pass
+                if mapid is None:
+                    log.warn(f"Unable to parse map '{raw_label}': '{raw_value}'")
+                    continue
+            
             if ('FM' in label) or ('FREE' in label) or ('FREEMOD' in label):
                 mods = ['freemod']
             elif ('TB' in label) or ('TIEBREAKER' in label):
@@ -347,8 +378,18 @@ def parse_config() -> Config:
                         if 'DT' not in mods and 'NC' not in mods: mods.append('DT')
                 if cfg.always_use_nf or 'NF' in label: mods.append('NF')
             
-            # lookup map description later, on a background thread (see references to try_populate_map_info)
-            map = MapChoice(label=label, mapid=mapid, mods=' '.join(mods), description='', map_info=None)
+            map = MapChoice(
+                label=label,
+                alias=alias,
+                mapid=mapid,
+                mods=' '.join(mods),
+                teammode=teammode,
+                scoremode=scoremode,
+                # look up map_info and description later, on a background thread
+                # (see references to try_populate_map_info)
+                description='',
+                map_info=None
+            )
             cfg.maps.append(map)
         pass
     
