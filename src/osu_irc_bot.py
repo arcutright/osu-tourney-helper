@@ -1,6 +1,7 @@
 import multiprocessing
 from multiprocessing.synchronize import Event as MpEvent
 from typing import Union
+from datetime import datetime
 import pprint
 from irc.strings import lower as irc_lower
 from irc.client import (
@@ -43,6 +44,7 @@ class OsuIRCBot(BaseOsuIRCBot):
             if self.room_id:
                 self.cancel_motd_event()
                 self.clear_response_event()
+                # TODO: don't close room if people are still playing...
                 self.close_room(warn=False)
                 self.response_event.wait(self.cfg.response_timeout)
         except Exception:
@@ -274,6 +276,43 @@ class OsuIRCBot(BaseOsuIRCBot):
     ## ----------------------------------------------------------------------
     # raw message handling
 
+    def _message_prelude(self, event: IRCEvent) -> str:
+        """Generate the appropriate `<time> <user>: ` prelude for the `event`"""
+        if not event:
+            return ''
+        if self.refers_to_server(event.source):
+            username_color = '\033[38;5;201m' # intense pink foreground
+        else:
+            username_color = '\033[38;5;229m' # light yellow foreground
+
+        if event.type in ('privmsg', 'privnotice'):
+            user_suffix = ' [priv]: '
+        else:
+            user_suffix = ': '
+        
+        return ''.join((
+            datetime.now().strftime('%H:%M'), ' ', # time
+            username_color,
+            self.get_user(event.source), # username who sent the message
+            '\033[0m', # reset color
+            user_suffix
+        ))
+    
+    def _color_message(self, msg: str, event: IRCEvent) -> str:
+        """Add ANSI colors to the `msg` for username highlights, private/puoblic, etc."""
+        if not event:
+            return msg
+        if event.type in ('privmsg', 'privnotice'):
+            return ''.join(('\033[38;5;219m',  msg, '\033[0m')) # light pink foreground
+        elif not self.refers_to_server(event.source):
+            # highlighting for mention of our username
+            ircname = irc_lower(self.connection.ircname)
+            nickname = irc_lower(self.connection.get_nickname())
+            msgl = irc_lower(msg)
+            if ircname in msgl or nickname in msgl:
+                return ''.join(('\033[38;5;120m', msg, '\033[0m')) # light green foreground
+        return msg
+
     def on_privmsg(self, conn: IRCServerConnection, event: IRCEvent):
         if not event.arguments: return
         msg = str(event.arguments[0]).rstrip()
@@ -292,16 +331,15 @@ class OsuIRCBot(BaseOsuIRCBot):
                     else:
                         self.room_link = msgl.strip()
                         self.room_name = ''
-        self.do_command(event, f"{self.get_user(event.source)}: {msg}")
+        msg2 = self._message_prelude(event) + self._color_message(msg, event)
+        self.do_command(event, msg2)
 
     def on_pubmsg(self, conn: IRCServerConnection, event: IRCEvent):
         if not event.arguments: return
         msg = str(event.arguments[0]).rstrip()
         if not msg: return
-        if not self.refers_to_server(event.source):
-            # TODO: name highlighting
-            pass
-        self.do_command(event, f"{self.get_user(event.source)}: {msg}")
+        msg2 = self._message_prelude(event) + self._color_message(msg, event)
+        self.do_command(event, msg2)
         return
         # leave event:
         #   source: 'BanchoBot!cho@ppy.sh'

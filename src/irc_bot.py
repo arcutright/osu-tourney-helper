@@ -399,12 +399,12 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
             self.shutdown()
             sys.exit(-92)
         elif cmd in ("motd", "motd2", "motdstart", "motdend"):
-            Console.writeln(f"{msg}")
+            Console.writeln(msg)
         elif cmd in ("currenttopic", "topicinfo"):
             # Console.writeln(f"{cmd} {msg}")
             pass
         elif cmd in ("privmsg", "pubmsg"):
-            Console.writeln(f"{cmd:<7} {msg}")
+            Console.writeln(msg)
         elif cmd in ("namreply", "whoreply"):
             # Console.writeln(f"{cmd} {msg2}")
             pass
@@ -414,6 +414,9 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
             chname: str
             chobj: irc.bot.Channel
             for (chname, chobj) in self.channels.items():
+                # notes from https://osu.ppy.sh/wiki/en/Community/Internet_Relay_Chat
+                # voiced or +user prefix: joined via IRC
+                # opers or @user prefix: global chat mod, GMT, etc.
                 Console.writeln("---------- !stats ----------")
                 Console.writeln(f"Channel: {chname}")
                 users = sorted(chobj.users())

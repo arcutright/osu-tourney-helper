@@ -86,7 +86,7 @@ class Config:
     motd_timeout: float = 3.0
     event_delay_timeout: float = 0.8
     # misc settings
-    log_level: logging._Level = 'INFO'
+    log_level: "Union[int, str]" = 'INFO'
     enable_console_colors: bool = True
     max_history_lines: int = 200
 
@@ -144,6 +144,7 @@ def get_many(d: dict, *keys, default=None):
  
 def try_get_map_info(mapid: int, label: str = '') -> "Union[MapInfo, None]":
     """Try to get a map's info (set name, diff name, etc.) from public apis"""
+    if mapid is None: return None
     try:
         ar = -1; hp = -1; od = -1; cs = -1; bpm = -1; length = -1; mode = 0
         _mapid = 0; setid = 0

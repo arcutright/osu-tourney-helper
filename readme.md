@@ -63,20 +63,6 @@ Assuming you meet the [requirements](#requirements)
 python osu_tourney_helper.py
 ```
 
-### Console controls
-
-The "console" acts like a discount shell (bash, cmd, xterm, etc), and has support for some common keyboard controls:
-
-- `<ENTER>` after typing a message/command to send it
-- `<UP>` to recall the previous command
-- `<DOWN>` to recall the next command
-- `<LEFT>`, `<RIGHT>`, `<BACKSPACE>`, `<DEL>`  have their normal functions
-- `<CTRL + LEFT>` jump to beginning of current word
-- `<CTRL + RIGHT>` jump to beginning of next word
-- `<CTRL + V>` paste text from clipboard
-- `<HOME>` and `<END>` to jump to the beginning and end of the command entry. *Note: if the current command entry wraps across multiple lines, eg. if you are typing a long message, this will jump to the beginning and end of the message. Many shells would jump to beginning/end of the current line, but I decided to use the whole command.*
-- `<INS>` toggle insert mode (if you are in the middle of a message, this will overwrite chars instead of appending). The "console prompt" will have a yellow asterisk to indicate when you are in insert mode.
-
 ### Example: manage a tournament lobby
 
 1. set up the ini file (see [configuration](#configuration))
@@ -91,7 +77,42 @@ For a full list of commands, type `!help` which will show all the custom command
 
 Right now, if you close the program via `!q`, `!quit`, or a keyboard interrupt sequence (ctrl+c), it will ensure that any room it creates is automatically closed for you. osu! currently limits you to 4 tournament lobbies at a time, and if you leave you may not be able to re-join to close it... they automatically close after a couple hours of inactivity. This auto-close behavior may or may not be desired.
 
+### Console controls
+
+The "console" acts like a discount shell (bash, cmd, xterm, etc), and has support for some common keyboard controls:
+
+- `<ENTER>` after typing a message/command to send it
+
+- `<UP>` to recall the previous command
+
+- `<DOWN>` to recall the next command
+
+- `<LEFT>`, `<RIGHT>`, `<BACKSPACE>`, `<DEL>`  have their normal functions
+
+- `<CTRL + LEFT>` jump to beginning of current word
+
+- `<CTRL + RIGHT>` jump to beginning of next word
+
+- `<CTRL + V>` paste text from clipboard
+
+- `<HOME>` and `<END>` to jump to the beginning and end of the command entry. *Note: if the current command entry wraps across multiple lines, eg. if you are typing a long message, this will jump to the beginning and end of the message. Many shells would jump to beginning/end of the current line, but I decided to use the whole command.*
+
+- `<INS>` toggle insert mode (if you are in the middle of a message, this will overwrite chars instead of appending). The "console prompt" will have a yellow asterisk to indicate when you are in insert mode.
+
+#### Caveats
+
+*These will probably get fixed / supported eventually*
+
+- No support for "selected text" as a concept. This means `<CTRL+A>` does nothing, holding `<SHIFT>` while moving does not select text, etc. To clear text, press `<DOWN>` to move to the "next" history item until you reach the end ("next" after the current entry = nothing). Otherwise use `<BACKSPACE>` and `<DEL>`.
+    - Windows doesn't have native scan codes for `<SHIFT + move>` (eg: no way to distinguish `<LEFT>` from `<SHIFT + LEFT>`). Posix does, but I'd rather come up with a generic support solution.
+- No support for tab completions
+
+
 ## Requirements
+
+Operating system
+- Tested under: Windows 10, ubuntu 18, ubuntu 22
+- Should support Mac
 
 To run from source, you'll need python 3.10 (developed under 3.10, probably fine to use 3.8+).
 
@@ -100,7 +121,7 @@ python -m venv .venv
 
 # activate venv
 source .venv/bin/activate # linux, mac
-.venv\Scripts\activate.bat # windows (cmd)
+.venv\Scripts\activate # windows (cmd)
 .venv\Scripts\Activate.ps1 # windows (powershell)
 
 # update pip and install required packages
