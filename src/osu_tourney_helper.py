@@ -23,13 +23,17 @@ class IgnoreErrorsBuffer(jaraco.stream.buffer.DecodingLineBuffer):
 def populate_map_infos(cfg: Config, map_infos_populated_event: Event, stop_event: Event):
     map_infos_populated_event.clear()
     for map in cfg.maps:
-        stop_event.wait(0.1) # avoid being rate-limited
+        if not map or map.map_info:
+            continue
         if stop_event.is_set():
             break
-        try_populate_map_info(map)
+        try_populate_map_info(cfg, map)
+        stop_event.wait(0.05) # avoid being rate-limited
     # in case we still got rate-limited, try again with some delay
     did_delay = False
     for map in cfg.maps:
+        if not map or map.map_info:
+            continue
         if stop_event.is_set():
             break
         if not map.map_info and map.mapid:
@@ -38,7 +42,7 @@ def populate_map_infos(cfg: Config, map_infos_populated_event: Event, stop_event
                 if stop_event.is_set():
                     break
                 did_delay = True
-            try_populate_map_info(map)
+            try_populate_map_info(cfg, map)
     map_infos_populated_event.set()
 
 def trap_interrupt(fn: Callable, *args, **kwagrs):
@@ -98,6 +102,8 @@ if __name__ == '__main__':
         # Console.test_colors()
         # test_interactive_console()
         main_bot()
+    except Exception:
+        traceback.print_exc()
     finally:
         Console.try_restore_stdin_stdout_behavior()
     sys.exit(0)

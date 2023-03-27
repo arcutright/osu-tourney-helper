@@ -7,11 +7,12 @@ import logging
 import ast
 from dataclasses import dataclass, field
 from typing import Union, Tuple
+from enum import Enum, Flag, IntFlag
 from datetime import datetime, timedelta
 import jaraco.logging
 
 from console import Console, log, setup_logging
-from helpers import try_int, parse_datetime, get_many, try_json_get
+from helpers import try_int, parse_datetime, get_many, try_json_request, JsonResponse
 
 @dataclass
 class MapInfo:
@@ -30,6 +31,8 @@ class MapInfo:
     length: int
     difficulty_rating: float
     is_ranked: bool
+    mods: str = ''
+    """If this is non-empty, that means ar/od/cs/hp/sr all include these mods in their calculation"""
     last_updated: "Union[datetime, None]" = None
     
     def get_osu_link(self, format=False) -> str:
@@ -75,11 +78,26 @@ class MapChoice:
         return get_mirror_links(self.map_info.setid, format)
     
 @dataclass
+class BearerToken:
+    access_token: str
+    expires_utc: datetime
+
+@dataclass
+class OsuAPIv2Credentials:
+    enabled: bool = True
+    client_id: int = 0
+    client_secret: str = ''
+    token: BearerToken = None
+    token_failed = False
+
+@dataclass
 class Config:
     # irc credentials
     username: str
     password: str
-    nickname: str
+    nickname: str = ''
+    # api credentials
+    osu_apiv2_credentials: OsuAPIv2Credentials = field(default_factory=OsuAPIv2Credentials)
     # room settings
     room_name: str = 'my tournament room'
     room_password: str = 'placeholder'
@@ -131,65 +149,227 @@ def get_mirror_links(setid: int, format=False) -> "list[str]":
     else:
         return [link[0] for link in links]
 
-def try_get_map_info(mapid: int, label: str = '') -> "Union[MapInfo, None]":
+def try_get_osuv2_credentials(cfg: Config):
+    if not cfg: return False
+    # TODO: handle refreshes if needed for creds.token
+    creds = cfg.osu_apiv2_credentials
+    request_data = {
+        'client_id': creds.client_id,
+        'client_secret': creds.client_secret,
+        'grant_type': 'client_credentials',
+        'scope': 'public',
+    }
+    # see https://github.com/ppy/osu-api/wiki
+    data = try_json_request(f"https://osu.ppy.sh/oauth/token", method='POST',
+                            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                            body=request_data)
+    if not data:
+        return False
+    elif any(k not in data for k in ('access_token', 'expires_in')):
+        log.warn(f"Unexpected token format from osu? Received '{data}'")
+        return False
+    expires = datetime.utcnow() + timedelta(seconds=int(data['expires_in']))
+    creds.token = BearerToken(str(data['access_token']), expires)
+    return True
+
+def try_get_map_info(cfg: Config, mapid: int, label: str = '', mods: str = '') -> "Union[MapInfo, None]":
     """Try to get a map's info (set name, diff name, etc.) from public apis"""
     if mapid is None: return None
     try:
         ar = -1; hp = -1; od = -1; cs = -1; bpm = -1; length = -1; mode = 0
         _mapid = 0; setid = 0
         sr = 0.0
+        ranked = -1
         diff_name = ''; song_artist = ''; song_title = ''; set_creator = ''
-        is_ranked = None; last_updated = None
+        last_updated = None
 
-        map_data = (try_json_get(f"https://api.chimu.moe/v1/map/{mapid}")
-                 or try_json_get(f"https://kitsu.moe/api/b/{mapid}"))
+        can_use_osu_apiv2 = False
+        map_data = {}
+        if cfg is not None:
+            creds = cfg.osu_apiv2_credentials
+            if creds.enabled and not creds.token_failed:
+                if not creds.token or creds.token.expires_utc < datetime.utcnow():
+                    got_token = try_get_osuv2_credentials(cfg)
+                    if not got_token:
+                        log.error(
+                            "Could not use the osu v2 api. Did you set up the client id/client secret in the config file?\n"
+                            "If you don't have one, you have to set it up at https://osu.ppy.sh/home/account/edit#new-oauth-application\n"
+                            "Name: 'osu-tourney-helper'\n"
+                            "Callback url: <blank>\n"
+                            "Then copy the client id/client secret into the config file"
+                        )
+                        creds.token_failed = True
+                if creds.token and not creds.token_failed:
+                    # see https://github.com/ppy/osu-api/wiki
+                    map_data = try_json_request(
+                        f"https://osu.ppy.sh/api/v2/beatmaps/{mapid}",
+                        headers={'Authorization': f"Bearer {creds.token.access_token}"}
+                    )
+                    can_use_osu_apiv2 = map_data is not None
+        if not map_data:
+            map_data = (try_json_request(f"https://api.chimu.moe/v1/map/{mapid}")
+                     or try_json_request(f"https://kitsu.moe/api/b/{mapid}"))
         if not map_data:
             log.warn(f"Unable to find map data for '{label}', mapid: {mapid}. Does this exist? https://osu.ppy.sh/beatmaps/{mapid}")
         set_data = {}
         if map_data:
-            ar = float(map_data.get('ar', -1))
-            hp = float(map_data.get('hp', -1))
-            od = float(map_data.get('od', -1))
-            cs = float(map_data.get('cs', -1))
-            bpm = float(map_data.get('bpm', -1))
+            # the fallbacks are a way of supporting every api response in one block
+            # for instance, most apis use 'od' and 'hp', but osu's apiv2 uses 'accuracy' and 'drain'
+            ar = float(get_many(map_data, 'ar', 'approach_rate', default=-1))
+            hp = float(get_many(map_data, 'hp', 'drain', default=-1))
+            od = float(get_many(map_data, 'od', 'accuracy', 'overall_difficulty', default=-1))
+            cs = float(get_many(map_data,'cs', 'circle_size', default=-1))
+            bpm = float(get_many(map_data, 'bpm', default=-1))
 
-            length = get_many(map_data, 'hitlength', 'hit_length', 'totallength', 'total_length', 'length', default=-1)
-            mode = map_data.get('mode', -1)
-            _mapid = get_many(map_data, 'beatmapid', 'id', default=-1)
-            setid = get_many(map_data, 'parentsetid', 'beatmapsetid', 'setid', default=-1)
-            diff_name = get_many(map_data, 'diffname', 'diff_name', 'version', default='')
+            length = float(get_many(map_data, 'hitlength', 'hit_length', 'totallength', 'total_length', 'length', default=-1))
+            mode = int(get_many(map_data, 'mode_int', 'mode', default=-1))
+            _mapid = int(get_many(map_data, 'beatmapid', 'beatmap_id', 'mapid', 'map_id', 'id', default=-1))
+            setid = int(get_many(map_data, 'parentsetid', 'parentset_id', 'beatmapsetid', 'beatmapset_id', 'setid', 'set_id', default=-1))
+            diff_name = str(get_many(map_data, 'diffname', 'diff_name', 'version', default=''))
             sr = float(get_many(map_data, 'difficultyrating', 'difficulty_rating', 'difficulty', 'starrating', 'star_rating', default=-1))
+            ranked = int(get_many(map_data, 'rankedstatus', 'ranked', default=-1))
+            last_updated = parse_datetime(str(get_many(map_data, 'last_updated', 'last_update', 'lastupdated', 'lastupdate', default='')))
+            passcount = int(get_many(map_data, 'passcount', 'pass_count', default=-1))
+            playcount = int(get_many(map_data, 'playcount', 'play_count', default=-1))
+
             if setid != -1:
-                set_data = (try_json_get(f"https://api.chimu.moe/v1/set/{setid}")
-                         or try_json_get(f"https://kitsu.moe/api/s/{setid}")
-                         or try_json_get(f"https://api.nerinyan.moe/search?q={setid}"))
+                set_data = (map_data.get('beatmapset', None) # osu /beatmaps/mapid comes with the set data
+                         or try_json_request(f"https://api.chimu.moe/v1/set/{setid}")
+                         or try_json_request(f"https://kitsu.moe/api/s/{setid}")
+                         or try_json_request(f"https://api.nerinyan.moe/search?q={setid}"))
                 if set_data:
-                    song_artist = set_data.get('artist', '')
-                    song_title = set_data.get('title', '')
-                    set_creator = set_data.get('creator', '')
-                    is_ranked = get_many(set_data, 'rankedstatus', 'ranked', default=0) == 1
-                    last_updated = parse_datetime(set_data.get('lastupdate', ''))
+                    song_artist = str(set_data.get('artist', ''))
+                    song_title = str(set_data.get('title', ''))
+                    set_creator = str(set_data.get('creator', ''))
+                    if ranked == -1: ranked = int(get_many(set_data, 'rankedstatus', 'ranked', default=ranked))
+                    if passcount == -1: passcount = int(get_many(set_data, 'passcount', 'pass_count', default=passcount))
+                    if playcount == -1: playcount = int(get_many(set_data, 'playcount', 'play_count', default=playcount))
+                    if not last_updated: last_updated = parse_datetime(str(get_many(set_data, 'last_updated', 'last_update', 'lastupdated', 'lastupdate', default='')))
+        
         if map_data and set_data and _mapid == mapid and setid != -1:
+            non_difficulty_mods = set(('NF', 'NM', 'FREEMOD', 'SO', 'SD', 'PF', 'AP', 'RL', 'AT', 'CM', 'TP'))
+            filtered_mods = [mod for mod in mods.upper().split(' ') if mod not in non_difficulty_mods]
+
+            # estimates / mod effects that aren't captured by the osu scorev2 api
+            # https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier
+            if 'HR' in filtered_mods:
+                if cs != -1: cs = min(10, cs * 1.3)
+                if ar != -1: ar = min(10, ar * 1.4)
+                if hp != -1: hp = min(10, hp * 1.4)
+                if od != -1: od = min(10, od * 1.4)
+            elif 'EZ' in filtered_mods:
+                if cs != -1: cs /= 2
+                if ar != -1: ar /= 2
+                if hp != -1: hp /= 2
+                if od != -1: od /= 2
+            if any(mod in filtered_mods for mod in ('HT', 'DT', 'NC')):
+                range300 = 80 - 6 * od  # see https://osu.ppy.sh/wiki/en/Beatmap/Overall_difficulty
+                if 'DT' in filtered_mods or 'NC' in filtered_mods:
+                    # TODO: DT estimates for hp
+                    if od != -1: range300 /= 1.5
+                    if length != -1: length /= 1.5
+                    if bpm != -1: bpm *= 1.5
+                elif 'HT' in filtered_mods:
+                    # TODO: HT estimates for hp
+                    if od != -1: range300 /= 0.75
+                    if length != -1: length /= 0.75
+                    if bpm != -1: bpm *= 0.75
+                # same formulas work for both HT and DT
+                if ar != -1:
+                    # see https://github.com/sbrstrkkdwmdr/osumodcalculator/blob/master/index.js
+                    if ar > 5:
+                        ms = 200 + (11 - ar) * 100
+                    else:
+                        ms = 800 + (5 - ar) * 80
+                    if ms < 300:
+                        ar = 11
+                    elif ms < 1200:
+                        ar = 11 - (ms - 300)/150
+                    else:
+                        ar = 5 - (ms - 1200)/120
+                if od != -1:
+                    od = min(11, (80 - range300) / 6)
+
+            if can_use_osu_apiv2 and filtered_mods:
+                # grab the difficulty rating in-depth if possible
+                # see https://github.com/ppy/osu-api/wiki
+                # see https://osu.ppy.sh/docs/index.html#beatmapdifficultyattributes
+                data = try_json_request(
+                    f"https://osu.ppy.sh/api/v2/beatmaps/{mapid}/attributes", method='POST',
+                    headers={'Authorization': f"Bearer {creds.token.access_token}"},
+                    body={'mods': filtered_mods}
+                )
+                if data:
+                    ar = float(get_many(data, 'approach_rate', 'ar', default=ar))
+                    od = float(get_many(data, 'overall_difficulty', 'od', 'accuracy', default=od))
+                    sr = float(get_many(data, 'star_rating', 'sr', default=od))
+
             return MapInfo(
                 mapid=mapid, setid=setid, diff_name=diff_name, song_title=song_title, song_artist=song_artist,
                 set_creator=set_creator, mode=mode, bpm=bpm, ar=ar, od=od, cs=cs, hp=hp, length=length,
-                difficulty_rating=sr,
-                is_ranked=is_ranked, last_updated=last_updated
+                difficulty_rating=sr, mods=mods,
+                is_ranked=(ranked==1), last_updated=last_updated
             )
     except Exception as ex:
         log.error(traceback.format_exc())
     return None
 
-def try_populate_map_info(map: MapChoice):
-    if not map or map.map_info: return
+def try_populate_map_info(cfg: Config, mc: MapChoice):
+    if not mc or mc.map_info: return
     desc = ''
-    mi = try_get_map_info(map.mapid, map.label)
+    mi = try_get_map_info(cfg, mc.mapid, mc.label, mc.mods)
     if mi:
         desc = f"{mi.song_artist} - {mi.song_title} [{mi.diff_name}] ({mi.set_creator})"
-    map.description = desc
-    map.map_info = mi
+    mc.description = desc
+    mc.map_info = mi
     return mi
 
+class OsuModFlags(Flag):
+    # yoinked from https://github.com/ppy/osu-api/wiki
+    _None   = 0 # no mods
+    NF      = 1
+    EZ      = 2
+    TD      = 4 # touch device
+    HD      = 8
+    HR      = 16
+    SD      = 32
+    DT      = 64
+    RL      = 128 # relax
+    HT      = 256
+    NC      = 512 # Only set along with DoubleTime. i.e: NC only gives 576
+    FL      = 1024
+    AT      = 2048 # auto (watch a playthrough)
+    SO      = 4096
+    AP      = 8192  # Autopilot (aka relax2)
+    PF      = 16384 # Only set along with SuddenDeath. i.e: PF only gives 16416  
+    Key4    = 32768
+    Key5    = 65536
+    Key6    = 131072
+    Key7    = 262144
+    Key8    = 524288 
+    FI      = 1048576 # fade in (mania)
+    Random  = 2097152
+    CM      = 4194304 # cinema
+    TP      = 8388608 # target practice
+    Key9    = 16777216
+    KeyCoop = 33554432
+    Key1    = 67108864
+    Key3    = 134217728
+    Key2    = 268435456
+    ScoreV2 = 536870912
+    Mirror  = 1073741824
+    KeyMod  = Key1 | Key2 | Key3 | Key4 | Key5 | Key6 | Key7 | Key8 | Key9 | KeyCoop
+    FreeModAllowed = NF | EZ | HD | HR | SD | FL | FI | RL | AP | SO | KeyMod
+    ScoreIncreaseMods = HD | HR | DT | FL | FI
+
+def mods_to_flags(mods: "Union[str, list[str]]"):
+    if isinstance(mods, str):
+        mods = mods.split(' ')
+    flags = OsuModFlags._None
+    for name in mods:
+        if name not in OsuModFlags.__dict__: continue
+        flags = flags | OsuModFlags[name]
+    return flags
 
 class QuoteStrippingConfigParser(configparser.ConfigParser):
     def get(self, section, option, *, raw=False, vars=None, fallback=configparser._UNSET):
@@ -207,7 +387,7 @@ def parse_config() -> Config:
     args = argparser.parse_args()
     setup_logging(args.log_level)
 
-    cfg = Config(username=args.username, password = args.password, nickname = args.nickname)
+    cfg = Config(username=args.username, password=args.password, nickname=args.nickname, osu_apiv2_credentials=OsuAPIv2Credentials())
 
     # read ini file for defaults
     if not os.path.exists(args.ini):
@@ -222,8 +402,14 @@ def parse_config() -> Config:
     cfg.password = cfgparser.get('credentials', 'irc_password', fallback=cfg.password).replace(' ', '_')
     cfg.nickname = cfgparser.get('credentials', 'irc_nickname', fallback=cfg.nickname).replace(' ', '_')
     if cfg.nickname and cfg.nickname != cfg.username:
-        print("osu! irc currently doesn't support nicknames for irc. Using username instead.")
+        log.warn("osu! irc currently doesn't support nicknames for irc. Using username instead.")
     cfg.nickname = cfg.username
+
+    # [credentials.osu_api_v2] section
+    creds = cfg.osu_apiv2_credentials
+    creds.enabled = cfgparser.getboolean('credentials.osu_api_v2', 'enabled', fallback=creds.enabled)
+    creds.client_id = cfgparser.getint('credentials.osu_api_v2', 'client_id', fallback=creds.client_id)
+    creds.client_secret = cfgparser.get('credentials.osu_api_v2', 'client_secret', fallback=creds.client_secret)
 
     # [room] section
     cfg.room_name = cfgparser.get('room', 'room_name', fallback=cfg.room_name)
@@ -348,13 +534,13 @@ def parse_config() -> Config:
         cfg.players = set([s.strip().replace(' ', '_') for s in cfgparser['players'] if s and s not in cfg.refs])
 
     # input validation
-    if not cfg.username:
-        log.fatal("You must provide your osu! username")
-        exit(-1)
-    if not cfg.password:
-        log.fatal("You must provide your osu! irc password (not your osu! password, go to https://osu.ppy.sh/p/irc)")
-        exit(-1)
-
+    if not cfg.username or not cfg.password:
+        if not cfg.username:
+            log.fatal("You must provide your osu! username")
+        if not cfg.password:
+            log.fatal("You must provide your osu! irc password (not your osu! password, go to https://osu.ppy.sh/p/irc)")
+        return None
+    
     cfg.nickname = cfg.nickname or cfg.username
     setup_logging(cfg.log_level)
     return cfg

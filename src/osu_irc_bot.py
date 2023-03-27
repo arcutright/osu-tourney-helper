@@ -443,7 +443,7 @@ class OsuIRCBot(BaseOsuIRCBot):
                         mapid_str = link[i+1:]
                         mapid = try_int(mapid_str, None)
                         if mapid is not None:
-                            self.room_map = try_get_map_info(mapid)
+                            self.room_map = try_get_map_info(self.cfg, mapid)
                 self.say_mirrors()
         else:
             self._handle_command(msg, event.source)
