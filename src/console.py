@@ -70,6 +70,16 @@ class Console:
     get_console_cursor_offset: "Union[Callable[[],int], None]" = None
     """Returns `int`: the position of cursor relative to the start of the console prompt + user input (including offset due to console propmt)"""
     
+    # TODO: improve foreground colors, add background colors
+    _fg_colors = {
+        'blue': '\033[38;5;45m', # blue
+        'gray': '\033[38;5;247m', # gray
+        'yellow': '\033[38;5;227m', # yellow
+        'red': '\033[38;5;160m', # red
+        'bright-red': '\033[38;5;196m', # bright red
+    }
+    _bg_colors = {}
+
     @staticmethod
     def _get_console_prompt():
         if callable(Console.get_console_prompt):
@@ -227,7 +237,11 @@ class Console:
             return Console.__ansi_color_regex.sub('', text)
 
     @staticmethod
-    def __writeln(target_name: str, line: str, source: str = ''):
+    def __writeln(target_name: str, line: str, source: str = '', fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+        fg = Console._fg_colors.get(fg, '')
+        bg = Console._bg_colors.get(bg, '')
+        if fg or bg:
+            line = ''.join((fg, bg, line, '\033[0m')) # TODO: maybe 'reset all' is wrong here...
         with Console.LockedWriter(target_name, source) as writer:
             writer.writeln(line)
     
@@ -273,20 +287,20 @@ class Console:
             Console._last_source = 'c'
 
     @staticmethod
-    def writeln(text: str):
-        Console.__writeln('stdout', text)
+    def writeln(text: str, fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+        Console.__writeln('stdout', text, fg=fg, bg=bg)
 
     @staticmethod
-    def writeln_stderr(text: str):
-        Console.__writeln('stderr', text)
+    def writeln_stderr(text: str, fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+        Console.__writeln('stderr', text, fg=fg, bg=bg)
 
     @staticmethod
-    def _writeln(text: str):
-        Console.__writeln('stdout', text, 'c')
+    def _writeln(text: str, fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+        Console.__writeln('stdout', text, 'c', fg=fg, bg=bg)
 
     @staticmethod
-    def _writeln_stderr(text: str):
-        Console.__writeln('stderr', text, 'c')
+    def _writeln_stderr(text: str, fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+        Console.__writeln('stderr', text, source='c', fg=fg, bg=bg)
 
     @staticmethod
     def _write(text: str):

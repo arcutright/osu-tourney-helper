@@ -122,17 +122,20 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         self.clear_response_event()
         channel = self._format_channel(channel)
         self.connection.privmsg(channel, content)
+        Console.writeln(f"self->{channel}: {content}", fg='gray')
 
     def send_pm(self, user: str, content: str):
         """Send a private message to a user on the server"""
         self.clear_response_event()
         user = self._format_user(user)
         self.connection.privmsg(user, content)
+        Console.writeln(f"self->{user}: {content}", fg='gray')
 
     def send_raw(self, content: str):
         """Send a raw string to the server (will be padded with CLRF for you)"""
         self.clear_response_event()
         self.connection.send_raw(content)
+        Console.writeln(f"self (raw): {content}", fg='gray')
 
     ## ----------------------------------------------------------------------
     # helpers
