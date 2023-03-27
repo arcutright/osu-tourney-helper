@@ -1,7 +1,7 @@
 import os
 import ssl
 import json
-from typing import Union
+from typing import Union, Tuple
 from datetime import datetime, timedelta
 from http.client import HTTPResponse
 import urllib.error, urllib.request, urllib.response, urllib.parse
@@ -22,10 +22,13 @@ def try_int(x, fallback=None):
         return fallback
 
 def parse_datetime(datestr: str) -> "Union[datetime, None]":
+    if not datestr:
+        return None
     try:
         return dateutil.parser.parse(datestr)
     except Exception:
         try:
+            # 2022-03-17T16:06:57Z
             return datetime.strptime(datestr, '%Y-%m-%dT%H:%M:%S.%fZ')
         except Exception:
             return None
@@ -33,6 +36,8 @@ def parse_datetime(datestr: str) -> "Union[datetime, None]":
 def get_many(d: dict, *keys, default=None):
     return next((d[key] for key in keys if key in d), default)
 
+def flatten(list_of_lists: "list[list]"):
+    return [val for sublist in list_of_lists for val in sublist]
 
 # context to ignore ssl cert issues
 ssl_ctx = ssl.create_default_context()
