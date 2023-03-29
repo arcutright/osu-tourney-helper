@@ -89,18 +89,19 @@ def try_json_request(url: str, lower_keys=True, headers: "Union[dict[str,str], N
             headers['Accept'] = 'application/json'
 
         # encode the body properly
+        data = body
         if body is not None:
             content_type = headers.get('Content-Type', headers.get('content-type','')).lower()
             if isinstance(body, dict):
                 if 'form-urlencoded' in content_type:
-                    body = '&'.join(f'{key}={value}' for (key, value) in body.items())
+                    data = '&'.join(f'{key}={value}' for (key, value) in body.items())
                 elif 'json' in content_type:
-                    body = json.dumps(body)
-            if isinstance(body, str):
-                body = body.encode()
-            # headers['Content-Length'] = len(body)
+                    data = json.dumps(body)
+        if isinstance(data, str):
+            data = data.encode()
+        # headers['Content-Length'] = len(body)
         
-        req = urllib.request.Request(url, headers=headers, data=body, method=method)
+        req = urllib.request.Request(url, headers=headers, data=data, method=method)
         resp: HTTPResponse = urllib.request.urlopen(req, context=ssl_ctx)
         resp_body: bytes = resp.read()
         if resp.status != 200:
@@ -118,7 +119,7 @@ def try_json_request(url: str, lower_keys=True, headers: "Union[dict[str,str], N
         # elif err.code >= 400 and err.code < 500:
         #    return {}
         else:
-            log.warn(f"{url} : {err.code} {err.reason}")
+            log.warn(f"{url} : {err.code} {err.reason} (body: '{body}')")
         return JsonResponse(False, err.code, err.reason, {})
     
     except Exception as ex:

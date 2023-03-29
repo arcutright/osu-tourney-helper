@@ -166,10 +166,10 @@ def align_text(text: str, width: int, direction='left',
     else:
         return (' '*nl) + text + (' '*nr)
 
-__osu_link_regex = re.compile(r"\[http[^\] ]+ ([^\]]+)\]")
-__markdown_link_regex = re.compile(r"(\[[^\]]+\])\(http[^\(\) ]+\)")
+__osu_link_regex = re.compile(r"\[http[^\] ]+ ([^\]]+)\]", re.IGNORECASE)
+__markdown_link_regex = re.compile(r"(\[[^\]]+\])\(http[^\(\) ]+\)", re.IGNORECASE)
 __ansi_escape_regex = re.compile(r"\033\[\d+(?:;\d+)*[a-zA-Z]")
-__unicode_escape_regex = re.compile(r"\\u([0-9A-Fa-f]{1,4})")
+__unicode_escape_regex = re.compile(r"\\u([0-9a-f]{1,4})", re.IGNORECASE)
 
 def __remove_unicode_combining_marks(text: str):
     """Remove unicode combining marks (underline, overline, etc.)"""
@@ -194,7 +194,7 @@ def __remove_unicode_combining_marks(text: str):
     ptext = __unicode_escape_regex.sub(unicode_match, ptext_escaped)
     return ptext
 
-def plaintext(text: str):
+def plaintext(text: str, remove_links=True):
     """Try to get only the meaningful plaintext from some input text. \n
     This tries to removes all escape sequences, control codes, unicode overlays, and
     remove links (`[alias](link)` -> `link`) from markdown/osu links (since only the alias should be shown)
@@ -215,8 +215,9 @@ def plaintext(text: str):
     ptext = unicodedata.normalize('NFKD', ptext) # or NFC?
 
     # convert link + alias -> just alias
-    ptext = __osu_link_regex.sub(r'\g<1>', ptext)
-    ptext = __markdown_link_regex.sub(r'\g<1>', ptext)
+    if remove_links:
+        ptext = __osu_link_regex.sub(r'\g<1>', ptext)
+        ptext = __markdown_link_regex.sub(r'\g<1>', ptext)
 
     # remove unicode combining marks (underline, overline, etc.)
     ptext = __remove_unicode_combining_marks(ptext)
@@ -552,10 +553,12 @@ def measure_new_font(font_or_path: 'Union[FreeTypeFont, str]', should_print=True
 __KNOWN_FONT_ALIASES: "list[Tuple[str, str]]" = [
     ('noto', 'noto sans'),
     ('exo2', 'exo 2'),
-    # venera weights are arbitrary choices by me...
-    ('venera bold', 'venera 900'),
-    ('venera', 'venera 700'),
-    ('venera thin', 'venera 500'),
+    ('mono', 'consolas'),
+    # venera weights are loosely based on FontWeight enum in https://github.com/ppy/osu/blob/master/osu.Game/Graphics/OsuFont.cs
+    ('venera black', 'venera 900'),
+    ('venera bold', 'venera 700'),
+    ('venera', 'venera 500'),
+    ('venera thin', 'venera 300'),
 ]
 
 __KNOWN_FONTS = {

@@ -1,7 +1,7 @@
 import sys
 import re
 import threading
-from typing import Union
+from typing import Union, Callable
 import multiprocessing
 from multiprocessing.synchronize import Event as MpEvent
 import irc.bot
@@ -13,10 +13,12 @@ from irc.client import (
     ip_quad_to_numstr,
     Connection as IRCConnection,
     ServerConnection as IRCServerConnection,
-    Event as IRCEvent
+    Event as IRCEvent,
+    MessageTooLong
 )
 
 from helpers import value_or_fallback
+from text import plaintext
 from config import Config
 from console import Console, log
 
@@ -121,21 +123,47 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         """Send a message to a channel on the server"""
         self.clear_response_event()
         channel = self._format_channel(channel)
-        self.connection.privmsg(channel, content)
-        Console.writeln(f"self->{channel}: {content}", fg='gray')
+        if self.__try_send(content, lambda msg: self.connection.privmsg(channel, msg)):
+            Console.writeln(f"self->{channel}: {content}", fg='gray')
 
     def send_pm(self, user: str, content: str):
         """Send a private message to a user on the server"""
         self.clear_response_event()
         user = self._format_user(user)
-        self.connection.privmsg(user, content)
-        Console.writeln(f"self->{user}: {content}", fg='gray')
+        if self.__try_send(content, lambda msg: self.connection.privmsg(user, msg)):
+            Console.writeln(f"self->{user}: {content}", fg='gray')
 
     def send_raw(self, content: str):
         """Send a raw string to the server (will be padded with CLRF for you)"""
         self.clear_response_event()
-        self.connection.send_raw(content)
-        Console.writeln(f"self (raw): {content}", fg='gray')
+        if self.__try_send(content, lambda msg: self.connection.send_raw(msg)):
+            Console.writeln(f"self (raw): {content}", fg='gray')
+
+    def __try_send(self, content: str, send_func: "Callable[[str]]"):
+        try:
+            send_func(content)
+            return True
+        except MessageTooLong:
+            pass
+        try:
+            content2 = plaintext(content, remove_links=False)
+            if len(content2) >= len(content):
+                raise MessageTooLong()
+            log.info(f"Failed to send: message too long (max 512 bytes per irc message). Trying plaintext conversion...")
+            send_func(content2)
+            return True
+        except Exception:
+            pass
+        try:
+            content3 = plaintext(content2, remove_links=True)
+            if len(content3) >= len(content2):
+                raise MessageTooLong()
+            log.info(f"Failed to send: message too long (max 512 bytes per irc message). Removing links...")
+            send_func(content3)
+            return True
+        except Exception:
+            log.warn(f"Failed to send: message too long (max 512 bytes per irc message). \nContent: '{content}'")
+            return False
 
     ## ----------------------------------------------------------------------
     # helpers
