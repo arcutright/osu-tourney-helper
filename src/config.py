@@ -248,7 +248,7 @@ def try_get_map_info(cfg: Config, mapid: int, label: str = '', mods: str = '') -
         
         if map_data and set_data and _mapid == mapid and setid != -1:
             non_difficulty_mods = set(('NF', 'NM', 'FREEMOD', 'SO', 'SD', 'PF', 'AP', 'RL', 'AT', 'CM', 'TP'))
-            filtered_mods = [mod for mod in mods.upper().split(' ') if mod not in non_difficulty_mods]
+            filtered_mods = [mod for mod in mods.upper().split(' ') if mod and mod not in non_difficulty_mods]
 
             # estimates / mod effects that aren't captured by the osu scorev2 api
             # https://osu.ppy.sh/wiki/en/Gameplay/Game_modifier

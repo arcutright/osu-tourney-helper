@@ -405,7 +405,7 @@ class OsuIRCBot(BaseOsuIRCBot):
         if not msg: return
         if self.refers_to_server(event.source) and self.refers_to_self(event.target):
             msgl = msg.lower()
-            if 'created' in msgl:
+            if msgl.startswith('created') and ('match' in msgl or 'room' in msgl):
                 i = msgl.find('http://')
                 if i == -1: i = msgl.find('https://')
                 if i != -1:
@@ -417,6 +417,11 @@ class OsuIRCBot(BaseOsuIRCBot):
                     else:
                         self.room_link = msgl.strip()
                         self.room_name = ''
+            elif msgl.startswith('closed') and ('match' in msgl or 'room' in msgl):
+                self.room_link = ''
+                self.room_id = ''
+                self.room_map = None
+                self.room_name = ''
         msg2 = self._message_prelude(event) + self._color_message(msg, event)
         self.do_command(event, msg2)
 
@@ -425,12 +430,17 @@ class OsuIRCBot(BaseOsuIRCBot):
         msg = str(event.arguments[0]).rstrip()
         if not msg: return
 
-        if self.refers_to_server(event.source):
+        if self.room_id and self.refers_to_server(event.source) and str(event.target).lower() == self.room_id.lower():
             # when the beatmap changes in the room
             # 21:29 BanchoBot: Beatmap changed to: Cartoon - Why We Lose (ft. Coleman Trapp) [Hobbes2's Light Insane] (https://osu.ppy.sh/b/1291655)
             # 22:23 BanchoBot: Changed beatmap to https://osu.ppy.sh/b/2538074 Demetori - Hoshi no Utsuwa ~ Casket of Star
             msgl = msg.lower()
-            if msgl.startswith(('beatmap changed', 'changed beatmap')):
+            if msgl.startswith('closed') and ('match' in msgl or 'room' in msgl):
+                self.room_link = ''
+                self.room_id = ''
+                self.room_map = None
+                self.room_name = ''
+            elif msgl.startswith(('beatmap changed', 'changed beatmap')):
                 self.room_map = None
                 i = msgl.rfind('http')
                 if i >= 0:
