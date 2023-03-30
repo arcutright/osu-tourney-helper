@@ -297,11 +297,12 @@ def try_get_map_info(cfg: Config, mapid: int, label: str = '', mods: str = '') -
                     f"https://osu.ppy.sh/api/v2/beatmaps/{mapid}/attributes", method='POST',
                     headers={'Authorization': f"Bearer {creds.token.access_token}"},
                     body={'mods': filtered_mods}
-                )
-                if data:
-                    ar = float(get_many(data, 'approach_rate', 'ar', default=ar))
-                    od = float(get_many(data, 'overall_difficulty', 'od', 'accuracy', default=od))
-                    sr = float(get_many(data, 'star_rating', 'sr', default=sr))
+                ) or {}
+                attrs = data.get('attributes')
+                if attrs:
+                    ar = float(get_many(attrs, 'approach_rate', 'ar', default=ar))
+                    od = float(get_many(attrs, 'overall_difficulty', 'od', 'accuracy', default=od))
+                    sr = float(get_many(attrs, 'star_rating', 'sr', default=sr))
 
             return MapInfo(
                 mapid=mapid, setid=setid, diff_name=diff_name, song_title=song_title, song_artist=song_artist,
