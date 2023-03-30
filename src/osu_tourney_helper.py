@@ -28,7 +28,8 @@ def populate_map_infos(cfg: Config, map_infos_populated_event: Event, stop_event
         if stop_event.is_set():
             break
         try_populate_map_info(cfg, map)
-        stop_event.wait(0.05) # avoid being rate-limited
+        if not cfg.osu_apiv2_credentials or not cfg.osu_apiv2_credentials.token:
+            stop_event.wait(0.05) # avoid being rate-limited, but osu apiv2 has a _very_ high rate limit
     # in case we still got rate-limited, try again with some delay
     did_delay = False
     for map in cfg.maps:

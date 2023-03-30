@@ -123,26 +123,26 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         """Send a message to a channel on the server"""
         self.clear_response_event()
         channel = self._format_channel(channel)
-        if self.__try_send(content, lambda msg: self.connection.privmsg(channel, msg)):
-            Console.writeln(f"self->{channel}: {content}", fg='gray')
+        sent = self.__try_send(content, lambda msg: self.connection.privmsg(channel, msg))
+        if sent: Console.writeln(f"self->{channel}: {sent}", fg='gray')
 
     def send_pm(self, user: str, content: str):
         """Send a private message to a user on the server"""
         self.clear_response_event()
         user = self._format_user(user)
-        if self.__try_send(content, lambda msg: self.connection.privmsg(user, msg)):
-            Console.writeln(f"self->{user}: {content}", fg='gray')
+        sent = self.__try_send(content, lambda msg: self.connection.privmsg(user, msg))
+        if sent: Console.writeln(f"self->{user}: {sent}", fg='gray')
 
     def send_raw(self, content: str):
         """Send a raw string to the server (will be padded with CLRF for you)"""
         self.clear_response_event()
-        if self.__try_send(content, lambda msg: self.connection.send_raw(msg)):
-            Console.writeln(f"self (raw): {content}", fg='gray')
+        sent = self.__try_send(content, lambda msg: self.connection.send_raw(msg))
+        if sent: Console.writeln(f"self (raw): {sent}", fg='gray')
 
     def __try_send(self, content: str, send_func: "Callable[[str]]"):
         try:
             send_func(content)
-            return True
+            return content
         except MessageTooLong:
             pass
         try:
@@ -151,7 +151,7 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
                 raise MessageTooLong()
             log.info(f"Failed to send: message too long (max 512 bytes per irc message). Trying plaintext conversion...")
             send_func(content2)
-            return True
+            return content2
         except Exception:
             pass
         try:
@@ -160,10 +160,10 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
                 raise MessageTooLong()
             log.info(f"Failed to send: message too long (max 512 bytes per irc message). Removing links...")
             send_func(content3)
-            return True
+            return content3
         except Exception:
             log.warn(f"Failed to send: message too long (max 512 bytes per irc message). \nContent: '{content}'")
-            return False
+            return None
 
     ## ----------------------------------------------------------------------
     # helpers

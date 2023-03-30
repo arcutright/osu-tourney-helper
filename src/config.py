@@ -159,7 +159,7 @@ def try_get_osuv2_credentials(cfg: Config):
         'grant_type': 'client_credentials',
         'scope': 'public',
     }
-    # see https://github.com/ppy/osu-api/wiki
+    # see https://osu.ppy.sh/docs/index.html
     data = try_json_request(f"https://osu.ppy.sh/oauth/token", method='POST',
                             headers={'Content-Type': 'application/x-www-form-urlencoded'},
                             body=request_data)
@@ -200,7 +200,7 @@ def try_get_map_info(cfg: Config, mapid: int, label: str = '', mods: str = '') -
                         )
                         creds.token_failed = True
                 if creds.token and not creds.token_failed:
-                    # see https://github.com/ppy/osu-api/wiki
+                    # see https://osu.ppy.sh/docs/index.html
                     map_data = try_json_request(
                         f"https://osu.ppy.sh/api/v2/beatmaps/{mapid}",
                         headers={'Authorization': f"Bearer {creds.token.access_token}"}
@@ -292,7 +292,6 @@ def try_get_map_info(cfg: Config, mapid: int, label: str = '', mods: str = '') -
 
             if can_use_osu_apiv2 and filtered_mods:
                 # grab the difficulty rating in-depth if possible
-                # see https://github.com/ppy/osu-api/wiki
                 # see https://osu.ppy.sh/docs/index.html#beatmapdifficultyattributes
                 data = try_json_request(
                     f"https://osu.ppy.sh/api/v2/beatmaps/{mapid}/attributes", method='POST',
@@ -302,11 +301,11 @@ def try_get_map_info(cfg: Config, mapid: int, label: str = '', mods: str = '') -
                 if data:
                     ar = float(get_many(data, 'approach_rate', 'ar', default=ar))
                     od = float(get_many(data, 'overall_difficulty', 'od', 'accuracy', default=od))
-                    sr = float(get_many(data, 'star_rating', 'sr', default=od))
+                    sr = float(get_many(data, 'star_rating', 'sr', default=sr))
 
             return MapInfo(
                 mapid=mapid, setid=setid, diff_name=diff_name, song_title=song_title, song_artist=song_artist,
-                set_creator=set_creator, mode=mode, bpm=bpm, ar=ar, od=od, cs=cs, hp=hp, length=length,
+                set_creator=set_creator, mode=mode, bpm=bpm, ar=ar, od=od, cs=cs, hp=hp, length=int(round(length)),
                 difficulty_rating=sr, mods=mods,
                 is_ranked=(ranked==1), last_updated=last_updated
             )

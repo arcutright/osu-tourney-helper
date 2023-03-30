@@ -403,6 +403,9 @@ class OsuIRCBot(BaseOsuIRCBot):
         if not event.arguments: return
         msg = str(event.arguments[0]).rstrip()
         if not msg: return
+        if self.refers_to_ref(event.source):
+            # self -> self? this only happens when sending a pm to yourself from irc
+            return
         if self.refers_to_server(event.source) and self.refers_to_self(event.target):
             msgl = msg.lower()
             if msgl.startswith('created') and ('match' in msgl or 'room' in msgl):

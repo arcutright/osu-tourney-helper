@@ -88,7 +88,7 @@ class OsuFontNames:
     """Font used in osu! lazer chat"""
     LAZER_ALT = 'inter' # technically it also uses a customized torus
     """Alternate font used in osu! lazer chat"""
-    LAZER_NUMBERS = 'venera'
+    LAZER_NUMBERS = 'venera bold'
     """Highly stylized font used sometimes for numbers in osu! lazer"""
 
 
@@ -280,22 +280,23 @@ def align_table(headers: 'Union[list[str], None]',
 
     aligned_fields: 'list[str]' = []
     for r, row in enumerate(rows):
-        padding = ''
+        lpad, rpad = '', ''
         text_acc = ''
         size_acc = 0
         aligned_fields.clear()
         for c, col in enumerate(row):
             if not accumulate_field_sizes:
-                _, nr = align_text_amounts(plaintext_rows[r][c], max_column_widths[c], directions[c], measures)
+                nl, nr = align_text_amounts(plaintext_rows[r][c], max_column_widths[c], directions[c], measures)
             else:
                 if c > 0:
-                    text_acc += f'{padding}{join_text}'
+                    text_acc += f'{rpad}{join_text}{lpad}' # estimate...
                     size_acc += join_size
                 text_acc += plaintext_rows[r][c]
                 size_acc += max_column_widths[c]
-                _, nr = align_text_amounts(text_acc, size_acc, directions[c], measures)
-            padding = (' '*nr) #; padding_size = space_size*nr
-            aligned_fields.append(f'{col}{padding}')
+                nl, nr = align_text_amounts(text_acc, size_acc, directions[c], measures)
+            lpad = (' '*nl) #; padding_size = space_size*nr
+            rpad = (' '*nr) #; padding_size = space_size*nr
+            aligned_fields.append(f'{lpad}{col}{rpad}')
 
         yield join_text.join(aligned_fields)
 
@@ -433,15 +434,27 @@ def raw_text_width(text: str, font_or_path: 'Union[FreeTypeFont, str]'):
             im = Image.new("RGB", (width, height), bg_color)
             draw = ImageDraw.Draw(im)
             tl0 = draw.textlength(itext, font) # not adjusted for kerning
+            return tl0
 
             # using features= requires libraqm (snag dlls from https://www.lfd.uci.edu/~gohlke/pythonlibs/, ctrl+f for libraqm, copy to venv bin directory)
             # https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist
             #, features=['pwid', 'case', 'clig', 'ss02'])
             
-            # im = Image.new("RGB", (width, height), bg_color)
-            # draw = ImageDraw.Draw(im)
-            # tl1 = draw.textlength(f'{itext}a', font) - draw.textlength('a', font)  # adjusted for kerning
-            return tl0
+            im = Image.new("RGB", (width, height), bg_color)
+            draw = ImageDraw.Draw(im)
+            tl1 = draw.textlength(f'{itext}a', font) - draw.textlength('a', font)  # adjusted for kerning
+            
+            # this approach gives much thinner symbols and whitespace
+            im = Image.new("RGB", (width, height), bg_color)
+            draw = ImageDraw.Draw(im)
+            draw.text((0,0), itext, font_color, font)
+            bb = im.getbbox()
+            if bb is not None:
+                tl2 = bb[2] - bb[0]
+            else:
+                return None
+            
+            return tl2
         
         # this technique essentially draws the chars onto a canvas
         # so we have special handling for whitespace chars since they would otherwise result in a blank canvas
@@ -461,6 +474,7 @@ def raw_text_width(text: str, font_or_path: 'Union[FreeTypeFont, str]'):
             if bbox is None:
                 raise Exception(f"Failed to measure '{text}' in font '{font_or_path}'")
             w = bbox[2] - bbox[0]
+        if w2 is None:
             bbox2 = font.getbbox(f'.{text2}.')
             w2 = bbox2[2] - bbox2[0]
         w -= dots_w
