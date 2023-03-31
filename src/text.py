@@ -29,19 +29,39 @@ except ImportError:
 
 
 class Unicode:
-    # see https://unicode-explorer.com/b/0300
+    # browse https://unicode-explorer.com/b/0300
+    # browse https://unicodeplus.com/U+005F
+
     @staticmethod
     def _combine(text: str, overlay: str) -> str:
-        if not text: return ''
-        return overlay.join(str(text)) + overlay
+        return Unicode._combine2(text, overlay, [])
     
     @staticmethod
     def _combine2(text: str, overlay: str, blacklist_chars: 'list[str]') -> str:
-        overlay = '\u0332'
-        arr = flatten((ch, overlay) if (
-                  ch not in blacklist_chars and
-                  unicodedata.normalize('NFKD', ch) not in blacklist_chars # catch accented chars
-              ) else (ch,) for ch in str(text))
+        text = str(text)
+        if not text: return ''
+        normalized = [unicodedata.normalize('NFKD', ch) for ch in text] # catch accented chars
+        # see https://stackoverflow.com/questions/58132476/why-will-unicode-u0332-not-underline-space-u0020
+        space_replacement = (
+            ('\u005f',) if overlay == '\u0332' # underline: \u005f or \uff3f
+            else ('\u2017',) if overlay == '\u0347' # double underline
+            else ('\u203e',) if overlay == '\u0305' # overline
+            else ('\u203e',) if overlay == '\u033f' # double overline (no independent char for this)
+            else (' ',)
+        )
+        if blacklist_chars:
+            arr = flatten(
+                space_replacement if normalized[i] == ' '
+                else (ch, overlay) if normalized[i] not in blacklist_chars
+                else (ch,)
+                for i, ch in enumerate(text)
+            )
+        else:
+            arr = flatten(
+                space_replacement if normalized[i] == ' '
+                else (ch, overlay)
+                for i, ch in enumerate(text)
+            )
         return ''.join(arr)
 
     @staticmethod
@@ -231,7 +251,9 @@ def align_table(headers: 'Union[list[str], None]',
                 join_text = ' | ',
                 directions: 'Union[str, list[str]]' = 'left',
                 font: 'Union[str, dict[str, int]]' = OsuFontNames.STABLE,
-                accumulate_field_sizes = True
+                accumulate_field_sizes = True,
+                underline_header = True,
+                align_last_field = True
 ) -> 'Generator[str]':
     """Return a table of headers and rows with text approximately aligned for all fields/headers
 
@@ -248,6 +270,9 @@ def align_table(headers: 'Union[list[str], None]',
       `accumulate_field_sizes`: if `False`, tries to align fields on a per-column basis.
       If `True`, tries to align them after accumulating all the aligned columns + join text,
       which may help reduce total alignment error on later columns if the font measures are accurate.
+      `underline_header`: if `True`, uses unicode to underline text in header line
+      `align_last_field`: if `False`, last field will be left-justified and last header will not be padded,
+      which may look strange if using `underline_header`.
     """
     measures = get_font_measures(font)
     join_size = measure_text(join_text, measures)
@@ -270,13 +295,16 @@ def align_table(headers: 'Union[list[str], None]',
                 max_column_widths[c] = max(max_column_widths[c], col_width)
         plaintext_rows.append(plain_cols)
 
-    max_column_widths[-1] = 0 # no point in trying to align the last field
+    if not align_last_field:
+        max_column_widths[-1] = 0
 
     if headers:
         header_aligns = [align_text_amounts(text, max_column_widths[c], directions[c], measures) for c, text in enumerate(plaintext_headers)]
         header_text = join_text.join((''.join((nl*' ', text, nr*' ')) for (nl, nr), text in zip(header_aligns, headers)))
         # header_text = join_text.join((align_text(text, max_column_widths[c], directions[c], measures) for c, text in enumerate(headers)))
-        yield Unicode.underline2(header_text)
+        if underline_header:
+            header_text = Unicode.underline2(header_text)
+        yield header_text
 
     aligned_fields: 'list[str]' = []
     for r, row in enumerate(rows):
