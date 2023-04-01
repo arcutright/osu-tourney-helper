@@ -42,10 +42,11 @@ class Unicode:
         if not text: return ''
         normalized = [unicodedata.normalize('NFKD', ch) for ch in text] # catch accented chars
         # see https://stackoverflow.com/questions/58132476/why-will-unicode-u0332-not-underline-space-u0020
+        # test https://yaytext.com/underline/
         space_replacement = (
             ('\u005f',) if overlay == '\u0332' # underline: \u005f or \uff3f
             else ('\u2017',) if overlay == '\u0347' # double underline
-            else ('\u203e',) if overlay == '\u0305' # overline
+            else ('\u203e',) if overlay == '\u0305' # overline: \u203e or \u00af
             else ('\u203e',) if overlay == '\u033f' # double overline (no independent char for this)
             else (' ',)
         )
@@ -66,10 +67,12 @@ class Unicode:
 
     @staticmethod
     def strike(text: str):
+        # TODO: may need special handling for spaces
         return Unicode._combine(text, '\u0336')
     
     @staticmethod
     def underline(text: str):
+        # TODO: numbers sometimes look terrible, probably applies to all underscores
         return Unicode._combine(text, '\u0332')
     
     __UNERLINE_OVERLAP_CHARS = set(('p', 'q', 'j', 'g', 'y', ',', '.', '_'))
@@ -90,6 +93,7 @@ class Unicode:
     
     @staticmethod
     def overline(text: str):
+        # may also want to try \ufe26 (bridges two characters)
         return Unicode._combine(text, '\u0305')
     
     @staticmethod
@@ -143,12 +147,14 @@ def align_text_amounts(text: str, width: int, direction='left',
       `direction`: 'left', 'right', 'center' (if empty, defaults to 'left')
       `font`: name of the font to use (see caveats in `get_font_measures`), or measures dict
     """
+    if width <= 0:
+        return 0, 0
     if not isinstance(text, str):
         text = str(text)
     measures = get_font_measures(font)
     size = measure_text(text, measures)
     space_size = measure_text(' ', measures)
-    if width <= 0 or size > width:
+    if size > width:
         return 0, 0
     n_spaces = int((float(width - size) / space_size) + 0.5)
     # err = width - (size + space_size*n_spaces)
@@ -188,30 +194,59 @@ def align_text(text: str, width: int, direction='left',
 
 __osu_link_regex = re.compile(r"\[http[^\] ]+ ([^\]]+)\]", re.IGNORECASE)
 __markdown_link_regex = re.compile(r"(\[[^\]]+\])\(http[^\(\) ]+\)", re.IGNORECASE)
-__ansi_escape_regex = re.compile(r"\033\[\d+(?:;\d+)*[a-zA-Z]")
-__unicode_escape_regex = re.compile(r"\\u([0-9a-f]{1,4})", re.IGNORECASE)
+# \033 are ANSI escape codes, the other chars are terminal controls
+__terminal_control_regex = re.compile(r"(?:\033\[\d+(?:;\d+)*[a-zA-Z])|[\a\b\v\0\177]")
 
-def __remove_unicode_combining_marks(text: str):
+# https://unicode-explorer.com/blocks
+def is_unicode_combining_char(ch: str):
+    if ch < '\u0300': return False # beginning of first combining block
+    if ch > '\ufe2f': return False # end of last combining block
+    elif ch < '\u1000':
+        # combining diacritical marks
+        if ch < '\u0300': return False
+        elif ch <= '\u036f': return True
+        # combining cyrillic
+        elif ch < '\u0483': return False
+        elif ch >= '\u0489': return True
+        # nko combining tones
+        elif ch < '\u07eb': return False
+        elif ch >= '\u07f3': return True
+    elif ch < '\u2000':
+        # combining diacritical marks extended
+        if ch < '\u1ab0': return False
+        elif ch <= '\u1aff': return True
+        # combining balinese musical symbol
+        elif ch < '\u1b6b': return False
+        elif ch <= '\u1b73': return True 
+        # combining diacritical marks supplement
+        elif ch < '\u1dc0': return False
+        elif ch <= '\u1dff': return True
+    elif ch < '\ua000':
+        # combining diacritical marks for symbols
+        if ch < '\u20d0': return False
+        elif ch <= '\u20ff': return True
+        # combining cyrillic
+        elif ch < '\u2de0': return False
+        elif ch <= '\u2dff': return True
+        # combining katakana-hiragana sound mark
+        elif ch in ('\u3099', '\u309a'): return True
+    else:
+        # combining cyrillic
+        if ch < '\ua66f': return False
+        elif ch <= '\ua67d': return True
+        # combining devanagari
+        elif ch < '\ua8e0': return False
+        elif ch <= '\ua8f1': return True
+        # combining half marks
+        elif ch < '\ufe20': return False
+        elif ch <= '\ufe2f': return True
+    return False
+
+def remove_unicode_combining_marks(text: str):
     """Remove unicode combining marks (underline, overline, etc.)"""
-    def unicode_match(matchobj: "re.Match"):
-        escape_seq = matchobj.group(1)
-        ordinal = int(escape_seq, 16)
-        # https://unicode-explorer.com/blocks
-        if ordinal >= 0x300 and ordinal <= 0x36f: # combining diacritical marks
-            return ''
-        elif ordinal >= 0x1ab0 and ordinal <= 0x1aff: # combining diacritical marks extended
-            return ''
-        elif ordinal >= 0x1dc0 and ordinal <= 0x1dff: # combining diacritical marks supplement
-            return ''
-        elif ordinal >= 0x20d0 and ordinal <= 0x20ff: # combining diacritical marks for symbols
-            return ''
-        elif ordinal >= 0xfe20 and ordinal <= 0xfe2f: # combining half marks
-            return ''
-        else:
-            char = chr(ordinal)
-            return char
-    ptext_escaped = text.encode('ascii', 'backslashreplace').decode()
-    ptext = __unicode_escape_regex.sub(unicode_match, ptext_escaped)
+    if all(ch < '\u0300' or ch > '\ufe2f' for ch in text):
+        return text
+    ptext = ''.join(ch for ch in text if not is_unicode_combining_char(ch))
     return ptext
 
 def plaintext(text: str, remove_links=True):
@@ -220,16 +255,8 @@ def plaintext(text: str, remove_links=True):
     remove links (`[alias](link)` -> `link`) from markdown/osu links (since only the alias should be shown)
     """
     ptext = str(text)
-
     # remove control characters
-    # \a: terminal bell
-    # \b: backspace
-    # \v: vertical tab
-    # \0: null
-    # \177: delete
-    ptext = (__ansi_escape_regex.sub('', ptext)
-             .replace('\a', '').replace('\b', '').replace('\r', '').replace('\v', '')
-             .replace('\0', '').replace('\177', ''))
+    ptext = __terminal_control_regex.sub('', ptext)
     
     # convert unicode -> ansi equivalents for table lookups (eg: a with accents -> a)
     ptext = unicodedata.normalize('NFKD', ptext) # or NFC?
@@ -240,7 +267,7 @@ def plaintext(text: str, remove_links=True):
         ptext = __markdown_link_regex.sub(r'\g<1>', ptext)
 
     # remove unicode combining marks (underline, overline, etc.)
-    ptext = __remove_unicode_combining_marks(ptext)
+    ptext = remove_unicode_combining_marks(ptext)
 
     # ascii_text = ptext.encode('ascii', 'ignore').decode('ascii', 'ignore') # bad for Ⓡ Ⓑ ⃝ ⌽ ⍉ ⛝
     # ascii2_text = ptext.encode('utf-8', 'ignore').decode('ascii', 'replace') # wrong len for Ⓡ Ⓑ ⃝ ⌽ ⍉ ⛝
@@ -253,7 +280,7 @@ def align_table(headers: 'Union[list[str], None]',
                 font: 'Union[str, dict[str, int]]' = OsuFontNames.STABLE,
                 accumulate_field_sizes = True,
                 underline_header = True,
-                align_last_field = True
+                pad_last_field = False
 ) -> 'Generator[str]':
     """Return a table of headers and rows with text approximately aligned for all fields/headers
 
@@ -271,8 +298,9 @@ def align_table(headers: 'Union[list[str], None]',
       If `True`, tries to align them after accumulating all the aligned columns + join text,
       which may help reduce total alignment error on later columns if the font measures are accurate.
       `underline_header`: if `True`, uses unicode to underline text in header line
-      `align_last_field`: if `False`, last field will be left-justified and last header will not be padded,
-      which may look strange if using `underline_header`.
+      `pad_last_field`: if `True` and last field is left-justified, padding will be added to ensure
+      it is the same length as the other fields. If `False` and left-justified, last header will not be padded,
+      which may look strange if using `underline_header`. If last column is right-justified this will have no effect.
     """
     measures = get_font_measures(font)
     join_size = measure_text(join_text, measures)
@@ -294,8 +322,10 @@ def align_table(headers: 'Union[list[str], None]',
             else:
                 max_column_widths[c] = max(max_column_widths[c], col_width)
         plaintext_rows.append(plain_cols)
+    if len(max_column_widths) > len(directions):
+        directions += ['left'] * (len(max_column_widths) - len(directions))
 
-    if not align_last_field:
+    if not pad_last_field or max_column_widths[-1] == 'left':
         max_column_widths[-1] = 0
 
     if headers:
