@@ -1,7 +1,8 @@
 import multiprocessing
 from multiprocessing.synchronize import Event as MpEvent
-from typing import Union
+from typing import Union, Tuple
 from datetime import datetime
+from time import sleep
 import pprint
 from irc.strings import lower as irc_lower
 from irc.client import (
@@ -11,6 +12,7 @@ from irc.client import (
 )
 
 from helpers import value_or_fallback, try_int
+from text import Unicode, OsuFontNames, align_table
 from config import Config, MapInfo, MapChoice, try_get_map_info
 from console import Console, log
 from irc_bot import BaseOsuIRCBot
@@ -227,7 +229,7 @@ class OsuIRCBot(BaseOsuIRCBot):
             self.say_mirrors()
             return True
         
-        elif command in ('link', '!mp link', 'room_link', 'roomlink') and self.room_link:
+        elif command in ('link', 'mp link', 'room_link', 'roomlink') and self.room_link:
             if source == '@@bot':
                 Console.writeln(self.room_link)
                 self.set_response_event(delay=0)
@@ -235,32 +237,74 @@ class OsuIRCBot(BaseOsuIRCBot):
                 self.send_message(self.room_id, f"Match history available [{self.room_link} here].")
             return True
         
-        elif command in ('mp maplist', 'mp map_list'):
+        elif command in ('mp maplist', 'mp map_list', 'maplist', 'map_list'):
             if source == '@@bot':
                 self.map_infos_populated_event.wait(1)
                 if not self.map_infos_populated_event.is_set():
                     Console.writeln("Waiting (max 30s) for map infos to be populated (this is a one-time cost)")
                     self.map_infos_populated_event.wait(30)
-                Console.writeln(f"{'label':<8}  {'mapid':<9}  {'mods':<12}  {'map link':<38}  {'map description'}")
-                Console.writeln(f"{'-'*8}  {'-'*9}  {'-'*12}  {'-'*38} {'-'*20}")
-                for mc in self.cfg.maps:
-                    Console.writeln(f"{mc.label:<8}  {mc.mapid:>9}  {mc.mods:<12}  {mc.get_osu_link():<38}  {mc.description}")
+                with Console.LockedWriter() as w:
+                    font = 'mono'
+                    join_text = ' | '
+                    directions = ['left'] + 6*['right'] + 2*['left']
+                    headers    = ['label', 'cs', 'hp', 'od', 'ar', 'stars', 'length', 'osu! link', 'map description' + ' '*10 ]
+                    rows = [[
+                        Unicode.underline2(mc.label),
+                        f'{mc.map_info.cs:.1f}' if mc.map_info else '?',
+                        f'{mc.map_info.hp:.1f}' if mc.map_info else '?',
+                        f'{mc.map_info.od:.1f}' if mc.map_info else '?',
+                        f'{mc.map_info.ar:.1f}' if mc.map_info else '?',
+                        f'{mc.map_info.difficulty_rating:.1f}*' if mc.map_info else '?',
+                        f'{mc.map_info.length//60}:{mc.map_info.length%60:02d}' if mc.map_info else '?',
+                        mc.get_osu_link(),
+                        mc.description,
+                    ] for i, mc in enumerate(self.cfg.maps)]
+                    for line in align_table(headers, rows, join_text, directions, font):
+                        w.writeln(line)
                 self.set_response_event(delay=0)
                 return True
+            
             elif self.room_id:
                 self.map_infos_populated_event.wait(1)
                 if not self.map_infos_populated_event.is_set():
-                    Console.writeln("Waiting (max 30s) for map infos to be populated (this is a one-time cost)")
+                    Console.writeln('Waiting (max 30s) for map infos to be populated (this is a one-time cost)')
                     self.map_infos_populated_event.wait(30)
-                self.send_message(self.room_id, f"{'label':<8}  {'mapid':<9}  {'mods':<12}  {'map description'}")
-                self.send_message(self.room_id, f"{'-'*8}  {'-'*9}  {'-'*12}  {'-'*20}")
-                for mc in self.cfg.maps:
-                    link = mc.get_osu_link(format=False)
-                    label = f"[{link} {mc.label}]" + (' '*max(0, 8 - len(mc.label)))
-                    self.send_message(self.room_id, f"{label}  {mc.mapid:>9}  {mc.mods:<12}  {mc.description}")
+                    
+                font = OsuFontNames.STABLE
+                font = 'aller'
+                join_text = ' | '
+                directions = 2*['left'] + 6*['right'] + ['left']
+                headers    = ['label', 'mods', 'cs', 'hp', 'od', 'ar', 'stars', 'length', 'map description' + ' '*10]
+                rows = [[
+                    f'{i+1:<2}. [{mc.get_osu_link()} {mc.label}]',
+                    mc.mods.replace('NF', '').replace('freemod', 'free').replace('  ', ' '),
+                    f'{mc.map_info.cs:.1f}' if mc.map_info else '?',
+                    f'{mc.map_info.hp:.1f}' if mc.map_info else '?',
+                    f'{mc.map_info.od:.1f}' if mc.map_info else '?',
+                    f'{mc.map_info.ar:.1f}' if mc.map_info else '?',
+                    f'{mc.map_info.difficulty_rating:.1f}*' if mc.map_info else '?',
+                    f'{mc.map_info.length//60}:{mc.map_info.length%60:02d}' if mc.map_info else '?',
+                    mc.description,
+                ] for i, mc in enumerate(self.cfg.maps)]
+                
+                j = 0
+                for i, line in enumerate(align_table(headers, rows, join_text, directions, font)):
+                    if i == 0: # header
+                        self.send_message(self.room_id, line)
+                        sleep(1) # try to ensure header is first
+                    else:
+                        self.send_message(self.room_id, line)
+                    j += 1
+                    if j == 3 and i < len(self.cfg.maps)-1:
+                        # see https://osu.ppy.sh/wiki/en/Bot_account
+                        # Personal accounts can send 10 messages every 5 seconds
+                        # Bot accounts can send 300 messages every 60 seconds
+                        Console.writeln('wait a bit to avoid irc rate limits (10 msg / 5 secs)...', fg='gray')
+                        sleep(3)
+                        j = 0
                 return True
         
-        elif command.startswith('mp map'):
+        elif command.startswith(('mp map', 'map')):
             # TODO: restrict players from changing the map?
             # (only makes sense once we implement tracking for who is host, whose turn it is, etc.)
             #if source != '@@bot' and not self.refers_to_ref(source):
