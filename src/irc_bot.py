@@ -118,7 +118,15 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         if not channel: return
         channel = self._format_channel(channel)
         self.connection.join(channel, password)
+        Console.writeln(f"self-> JOIN {channel}", fg='gray')
         # responds with 'join', 'currenttopic', 'topicinfo'
+
+    def part_channel(self, channel: str):
+        # TODO: support channel='' as 'leave most recently joined channel'
+        if not channel: return
+        channel = self._format_channel(channel)
+        self.connection.part(channel)
+        Console.writeln(f"self-> PART {channel}", fg='gray')
 
     def send_message(self, channel: str, content: str):
         """Send a message to a channel on the server"""

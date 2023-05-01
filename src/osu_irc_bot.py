@@ -118,6 +118,11 @@ class OsuIRCBot(BaseOsuIRCBot):
         user = self.get_user(userstr)
         # TODO: track if refs are added
         return self.refers_to_self(user) or user in self.cfg.refs
+    
+    def join_channel(self, channel: str, password=''):
+        # TODO: parse room id from match links?
+        # TODO: should probably format number-only channels like '#mp_<room_id>'
+        super().join_channel(channel, password)
 
     ## ----------------------------------------------------------------------
 
@@ -219,6 +224,17 @@ class OsuIRCBot(BaseOsuIRCBot):
                 Console.writeln(pp.pformat(self.cfg))
                 Console.writeln('--- !stats ---')
             self.do_command(IRCEvent('stats', '', ''), '')
+            return True
+        
+        elif source == '@@bot' and any(command.startswith(f'{prefix} ') for prefix in ('j', 'join')):
+            rhs = command[command.find(' ')+1:].strip().split(' ', 1) # rhs = right hand side
+            channel, password = rhs if len(rhs) == 2 else (rhs[0], '')
+            self.join_channel(channel, password)
+            return True
+        
+        elif source == '@@bot' and any(command.startswith(f'{prefix} ') for prefix in ('p', 'part')): # or command == 'part'):
+            channel = command[command.find(' ')+1:]
+            self.part_channel(channel)
             return True
 
         elif (source == '@@bot' or self.refers_to_ref(source)) and command in ('mp inviteall', 'mp invite_all'):
