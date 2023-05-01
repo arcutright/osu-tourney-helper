@@ -1,3 +1,4 @@
+from __future__ import annotations
 from readchar.key import *
 
 # this list was mostly made by manual testing, couldn't find a good reference doc

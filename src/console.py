@@ -1,14 +1,15 @@
+from __future__ import annotations
 import os
 import sys
 import re
 import logging
 import traceback
 import multiprocessing
-from typing import Final, Callable, Union, TextIO
+from typing import Final, Callable, TextIO
 import subprocess
 import shutil
 
-log: "Final[logging.Logger]" = logging.getLogger(__name__)
+log: Final[logging.Logger] = logging.getLogger(__name__)
 
 # -------------------------------------------------------------
 #  wrappers to enable "the console to stay at the bottom"
@@ -57,17 +58,17 @@ class Console:
     _LOCK = multiprocessing.RLock()
     """Used to ensure the console vs user outputs are kept separate in the `Console.*write*` funcs and `LockedWriter` """
     _last_source = '' # blank = not the console, 'c' = the console
-    _console_stdout: "list[str]" = []
-    _console_stderr: "list[str]" = []
+    _console_stdout: list[str] = []
+    _console_stderr: list[str] = []
     enable_colors = True
     # callbacks
-    get_console_prompt: "Union[Callable[[],list[str]], None]" = None
+    get_console_prompt: Callable[[],list[str]] | None = None
     """Returns `list(str)`: the console prompt as char array"""
-    get_console_stdout: "Union[Callable[[],list[str]], None]" = None
+    get_console_stdout: Callable[[],list[str]] | None = None
     """Returns `list(str)`: the console prompt + user input on stdin as char array"""
-    get_console_stderr: "Union[Callable[[],list[str]], None]" = None
+    get_console_stderr: Callable[[],list[str]] | None = None
     """Returns `list(str)`: the console prompt + user input on stderr as char array"""
-    get_console_cursor_offset: "Union[Callable[[],int], None]" = None
+    get_console_cursor_offset: Callable[[],int] | None = None
     """Returns `int`: the position of cursor relative to the start of the console prompt + user input (including offset due to console propmt)"""
     
     # TODO: improve foreground colors, add background colors
@@ -237,7 +238,7 @@ class Console:
             return Console.__ansi_color_regex.sub('', text)
 
     @staticmethod
-    def __writeln(target_name: str, line: str, source: str = '', fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+    def __writeln(target_name: str, line: str, source: str = '', fg: str | None = None, bg: str | None = None):
         fg = Console._fg_colors.get(fg, '')
         bg = Console._bg_colors.get(bg, '')
         if fg or bg:
@@ -287,19 +288,19 @@ class Console:
             Console._last_source = 'c'
 
     @staticmethod
-    def writeln(text: str, fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+    def writeln(text: str, fg: str | None = None, bg: str | None = None):
         Console.__writeln('stdout', text, fg=fg, bg=bg)
 
     @staticmethod
-    def writeln_stderr(text: str, fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+    def writeln_stderr(text: str, fg: str | None = None, bg: str | None = None):
         Console.__writeln('stderr', text, fg=fg, bg=bg)
 
     @staticmethod
-    def _writeln(text: str, fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+    def _writeln(text: str, fg: str | None = None, bg: str | None = None):
         Console.__writeln('stdout', text, 'c', fg=fg, bg=bg)
 
     @staticmethod
-    def _writeln_stderr(text: str, fg: "Union[str, None]" = None, bg: "Union[str, None]" = None):
+    def _writeln_stderr(text: str, fg: str | None = None, bg: str | None = None):
         Console.__writeln('stderr', text, source='c', fg=fg, bg=bg)
 
     @staticmethod

@@ -1,7 +1,8 @@
+from __future__ import annotations
 import sys
 import re
 import threading
-from typing import Union, Callable
+from typing import Callable
 import multiprocessing
 from multiprocessing.synchronize import Event as MpEvent
 import irc.bot
@@ -55,9 +56,9 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
     any of its own commands.
     """
     def __init__(self, cfg: Config,
-                 response_event: "Union[MpEvent, None]" = None,
-                 motd_event: "Union[MpEvent, None]" = None,
-                 map_infos_populated_event: "Union[MpEvent, None]" = None,
+                 response_event: MpEvent | None = None,
+                 motd_event: MpEvent | None = None,
+                 map_infos_populated_event: MpEvent | None = None,
                  **connect_params):
         server_list = [(cfg.server, cfg.port, cfg.password)] if cfg.password else [(cfg.server, cfg.port)]
         irc.bot.SingleServerIRCBot.__init__(self, server_list, nickname=cfg.nickname, realname=cfg.username, username=cfg.username, **connect_params)
@@ -139,7 +140,7 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         sent = self.__try_send(content, lambda msg: self.connection.send_raw(msg))
         if sent: Console.writeln(f"self (raw): {sent}", fg='gray')
 
-    def __try_send(self, content: str, send_func: "Callable[[str]]"):
+    def __try_send(self, content: str, send_func: Callable[[str]]):
         try:
             send_func(content)
             return content
@@ -246,7 +247,7 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         self.motd_event.clear()
         self._did_motd_complete = False
 
-    def set_response_event(self, delay: "Union[float, None]" = None):
+    def set_response_event(self, delay: float | None = None):
         """ Sets `response_event` after a delay (if None, defaults to `event_delay_timeout`)"""
         self.cancel_response_event()
         if delay is None:
@@ -257,7 +258,7 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
             self._response_timer = threading.Timer(delay, self._on_response_complete)
             self._response_timer.start()
 
-    def set_motd_event(self, delay: "Union[float, None]" = None):
+    def set_motd_event(self, delay: float | None = None):
         """ Sets `motd_event` after a delay (if None, defaults to `motd_timeout`). \n
         Note that motd event will only ever be set once (see `_did_motd_complete`)
         """

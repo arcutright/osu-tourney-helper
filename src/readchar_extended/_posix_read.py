@@ -1,4 +1,4 @@
-
+from __future__ import annotations
 from readchar import config
 from readchar import readchar as __readchar
 

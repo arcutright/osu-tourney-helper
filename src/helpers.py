@@ -1,7 +1,7 @@
+from __future__ import annotations
 import os
 import ssl
 import json
-from typing import Union, Tuple
 from datetime import datetime, timedelta
 from http.client import HTTPResponse
 import urllib.error, urllib.request, urllib.response, urllib.parse
@@ -21,7 +21,7 @@ def try_int(x, fallback=None):
     except Exception:
         return fallback
 
-def parse_datetime(datestr: str) -> "Union[datetime, None]":
+def parse_datetime(datestr: str) -> datetime | None:
     if not datestr:
         return None
     try:
@@ -36,14 +36,14 @@ def parse_datetime(datestr: str) -> "Union[datetime, None]":
 def get_many(d: dict, *keys, default=None):
     return next((d[key] for key in keys if key in d), default)
 
-def flatten(list_of_lists: "list[list]"):
+def flatten(list_of_lists: list[list]):
     return [val for sublist in list_of_lists for val in sublist]
 
 class JsonResponse:
     """Wrapper over a dict + status code / ok and message in case of not ok.
     This supports most dict read operators as well as truthiness check for 'is response ok'
     """
-    def __init__(self, ok: bool, status: int, message: str, data: "Union[dict, None]"):
+    def __init__(self, ok: bool, status: int, message: str, data: dict | None):
         self.ok = True if ok else False
         self.status = int(status)
         self.message = str(message)
@@ -72,7 +72,7 @@ ssl_ctx = ssl.create_default_context()
 ssl_ctx.check_hostname = False
 ssl_ctx.verify_mode = ssl.CERT_NONE
 
-def try_json_request(url: str, lower_keys=True, headers: "Union[dict[str,str], None]" = None, body = None, method='GET'):
+def try_json_request(url: str, lower_keys=True, headers: dict[str,str] | None = None, body = None, method='GET'):
     try:
         log.debug(f"try to hit {url}")
         headers = headers or {}
@@ -106,7 +106,7 @@ def try_json_request(url: str, lower_keys=True, headers: "Union[dict[str,str], N
         resp_body: bytes = resp.read()
         if resp.status != 200:
             return JsonResponse(False, resp.status, resp_body.decode(), {})
-        raw_json: "dict[str,object]" = json.loads(resp_body.decode())
+        raw_json: dict[str,object] = json.loads(resp_body.decode())
         if not lower_keys:
             json_data = raw_json
         else:

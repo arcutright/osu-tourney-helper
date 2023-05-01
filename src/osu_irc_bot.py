@@ -1,6 +1,6 @@
+from __future__ import annotations
 import multiprocessing
 from multiprocessing.synchronize import Event as MpEvent
-from typing import Union, Tuple
 from datetime import datetime
 from time import sleep
 import pprint
@@ -19,9 +19,9 @@ from irc_bot import BaseOsuIRCBot
 
 class OsuIRCBot(BaseOsuIRCBot):
     def __init__(self, cfg: Config,
-                 response_event: "Union[MpEvent, None]" = None,
-                 motd_event: "Union[MpEvent, None]" = None,
-                 map_infos_populated_event: "Union[MpEvent, None]" = None,
+                 response_event: MpEvent | None = None,
+                 motd_event: MpEvent | None = None,
+                 map_infos_populated_event: MpEvent | None = None,
                  **connect_params):
         BaseOsuIRCBot.__init__(
             self,
@@ -36,7 +36,7 @@ class OsuIRCBot(BaseOsuIRCBot):
         self.raw_commands = value_or_fallback(cfg.raw_commands, [])
 
         self.room_id = ''
-        self.room_map: "Union[MapInfo, None]" = None
+        self.room_map: MapInfo | None = None
         self.__creating_room = False
         self.__closing_room = False
 

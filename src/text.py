@@ -1,6 +1,7 @@
+from __future__ import annotations
 import os
 import json
-from typing import Union, Tuple, Generator, AsyncGenerator
+from typing import Generator, AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from http.client import HTTPResponse
@@ -37,7 +38,7 @@ class Unicode:
         return Unicode._combine2(text, overlay, [])
     
     @staticmethod
-    def _combine2(text: str, overlay: str, blacklist_chars: 'list[str]') -> str:
+    def _combine2(text: str, overlay: str, blacklist_chars: list[str]) -> str:
         text = str(text)
         if not text: return ''
         normalized = [unicodedata.normalize('NFKD', ch) for ch in text] # catch accented chars
@@ -116,7 +117,7 @@ class OsuFontNames:
     """Highly stylized font used sometimes for numbers in osu! lazer"""
 
 
-def measure_text(text: str, font: 'Union[str, dict[str, int]]') -> int:
+def measure_text(text: str, font: str | dict[str, int]) -> int:
     """Get a measurement of some text in a given font (to account for non-monospace fonts). \n
     This uses a 'standardized' font size and only has support for a few fonts. \n
     See `font` caveats in `get_font_measures`
@@ -136,8 +137,8 @@ def measure_text(text: str, font: 'Union[str, dict[str, int]]') -> int:
     return sum(measures.get(ch, 'avg') for ch in ptext)
 
 def align_text_amounts(text: str, width: int, direction='left',
-                       font: 'Union[str, dict[str, int]]' = OsuFontNames.STABLE
-) -> 'Tuple[int, int]':
+                       font: str | dict[str, int] = OsuFontNames.STABLE
+) -> tuple[int, int]:
     """Return the amount of spaces (left, right) needed to pad the given text
     to approximately the given width
 
@@ -175,7 +176,7 @@ def align_text_amounts(text: str, width: int, direction='left',
         raise NotImplementedError(f"align to direction '{direction}'")
 
 def align_text(text: str, width: int, direction='left',
-               font: 'Union[str, dict[str, int]]' = OsuFontNames.STABLE):
+               font: str | dict[str, int] = OsuFontNames.STABLE):
     """Return the text approximately aligned to the given width
 
     params:
@@ -273,15 +274,15 @@ def plaintext(text: str, remove_links=True):
     # ascii2_text = ptext.encode('utf-8', 'ignore').decode('ascii', 'replace') # wrong len for Ⓡ Ⓑ ⃝ ⌽ ⍉ ⛝
     return ptext
 
-def align_table(headers: 'Union[list[str], None]',
-                rows: 'list[list[str]]',
+def align_table(headers: list[str] | None,
+                rows: list[list[str]],
                 join_text = ' | ',
-                directions: 'Union[str, list[str]]' = 'left',
-                font: 'Union[str, dict[str, int]]' = OsuFontNames.STABLE,
+                directions: str | list[str] = 'left',
+                font: str | dict[str, int] = OsuFontNames.STABLE,
                 accumulate_field_sizes = True,
                 underline_header = True,
                 pad_last_field = False
-) -> 'Generator[str]':
+) -> Generator[str]:
     """Return a table of headers and rows with text approximately aligned for all fields/headers
 
     params:
@@ -310,7 +311,7 @@ def align_table(headers: 'Union[list[str], None]',
     
     # plaintext_rows: use regexes to extract labels from formatted links
     # when using link formatting, the link does not contribute width to how it is displayed
-    plaintext_rows: 'list[list[str]]' = []
+    plaintext_rows: list[list[str]] = []
     for r, row in enumerate(rows):
         if isinstance(directions, str):
             directions = [directions] * len(row)
@@ -336,7 +337,7 @@ def align_table(headers: 'Union[list[str], None]',
             header_text = Unicode.underline2(header_text)
         yield header_text
 
-    aligned_fields: 'list[str]' = []
+    aligned_fields: list[str] = []
     for r, row in enumerate(rows):
         lpad, rpad = '', ''
         text_acc = ''
@@ -369,7 +370,7 @@ def __standardize_font_name(name: str):
         .replace('negreta', 'bold', 1).replace('cursiva', 'italic', 1) # have seen this in a few fonts
     ).replace('  ', ' ').strip()
 
-def try_get_font_measures(font: 'Union[str, dict[str, int]]'):
+def try_get_font_measures(font: str | dict[str, int]):
     """ Try to look up character sizes for common fonts like 'arial' or 'tahoma bold'. \n
     This will be a dict of 'char' -> size (int).
 
@@ -404,7 +405,7 @@ def try_get_font_measures(font: 'Union[str, dict[str, int]]'):
 
     return measures
 
-def get_font_measures(font: 'Union[str, dict[str, int]]'):
+def get_font_measures(font: str | dict[str, int]):
     """ Looks up character sizes for common fonts like 'arial' or 'tahoma bold'. \n
     This will be a dict of 'char' -> size (int).
 
@@ -427,7 +428,7 @@ def get_font_measures(font: 'Union[str, dict[str, int]]'):
     )
     # measure_new_font(path)
 
-def is_font_known(font: 'Union[str, dict[str, int]]'):
+def is_font_known(font: str | dict[str, int]):
     """Check if this is a known font. Otherwise `get_font_measures` will raise an exception.
     
     params:
@@ -439,7 +440,7 @@ def is_font_known(font: 'Union[str, dict[str, int]]'):
 def list_known_fonts():
     return [k for k in __KNOWN_FONTS.keys()]
 
-def get_font_short_name(font_or_path: 'Union[FreeTypeFont, str]'):
+def get_font_short_name(font_or_path: FreeTypeFont | str):
     """Get the standardized short name of a font (eg: 'arial', 'arial bold', etc.)
 
     params:
@@ -459,7 +460,7 @@ def get_font_short_name(font_or_path: 'Union[FreeTypeFont, str]'):
     name = __standardize_font_name(name)
     return name
 
-def raw_text_width(text: str, font_or_path: 'Union[FreeTypeFont, str]'):
+def raw_text_width(text: str, font_or_path: FreeTypeFont | str):
     """Directly measure the text width in a given font
 
     params:
@@ -563,7 +564,7 @@ def measure_new_fonts(dir: str):
             traceback.print_exc()
 
 
-def measure_new_font(font_or_path: 'Union[FreeTypeFont, str]', should_print=True, should_wrap=True):
+def measure_new_font(font_or_path: FreeTypeFont | str, should_print=True, should_wrap=True):
     """ Calculate the measurements for a given font or file (a dict of char -> size (int)).
 
     params:
@@ -622,7 +623,7 @@ def measure_new_font(font_or_path: 'Union[FreeTypeFont, str]', should_print=True
 
 
 # these are used for find/replace whenever a font name isn't found in __KNOWN_FONTS
-__KNOWN_FONT_ALIASES: "list[Tuple[str, str]]" = [
+__KNOWN_FONT_ALIASES: list[tuple[str, str]] = [
     ('noto', 'noto sans'),
     ('exo2', 'exo 2'),
     ('mono', 'consolas'),

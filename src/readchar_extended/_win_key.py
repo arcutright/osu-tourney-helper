@@ -1,3 +1,4 @@
+from __future__ import annotations
 from readchar.key import *
 
 DEL = DELETE

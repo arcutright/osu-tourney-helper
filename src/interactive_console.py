@@ -1,10 +1,10 @@
+from __future__ import annotations
 import sys
 import re
 import traceback
 import shutil
 import multiprocessing
 from multiprocessing.synchronize import Event
-from typing import Union
 import pyperclip # clipboard support
 
 import readchar_extended.key as keycode
@@ -16,9 +16,9 @@ from osu_irc_bot import OsuIRCBot
 
 class InteractiveConsole:
     def __init__(self,
-                 bot: "Union[OsuIRCBot, DummyBot]",
+                 bot: OsuIRCBot | DummyBot,
                  cfg: Config,
-                 stop_event: "Union[Event, None]" = None
+                 stop_event: Event | None = None
     ):
         self.bot = bot
         self.cfg = cfg
@@ -26,9 +26,9 @@ class InteractiveConsole:
         self._stopped = False
 
         self.insert_mode = False
-        self.history: "list[list[str]]" = []
+        self.history: list[list[str]] = []
         self.history_idx = 0
-        self.current_input: "list[str]" = []
+        self.current_input: list[str] = []
         self.current_input_idx = 0
 
         (self.maxcols, self.maxrows) = shutil.get_terminal_size()
@@ -428,7 +428,7 @@ class DummyBot:
         Console.writeln(f"DummyBot shutdown")
         self.response_event.set()
 
-def test_interactive_console(stop_event: "Union[Event, None]" = None):
+def test_interactive_console(stop_event: Event | None = None):
     cfg = parse_config()
     Console.enable_colors = cfg.enable_console_colors
     bot_response_event = multiprocessing.Event()

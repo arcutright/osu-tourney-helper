@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import sys
 import traceback
@@ -6,7 +7,6 @@ import configparser
 import logging
 import ast
 from dataclasses import dataclass, field
-from typing import Union, Tuple
 from enum import Enum, Flag, IntFlag
 from datetime import datetime, timedelta
 import jaraco.logging
@@ -33,7 +33,7 @@ class MapInfo:
     is_ranked: bool
     mods: str = ''
     """If this is non-empty, that means ar/od/cs/hp/sr all include these mods in their calculation"""
-    last_updated: "Union[datetime, None]" = None
+    last_updated: datetime | None = None
     
     def get_osu_link(self, format=False) -> str:
         """ Get a link to download beatmap from osu! \n
@@ -41,7 +41,7 @@ class MapInfo:
         """
         return get_osu_link(self.mapid, format)
     
-    def get_mirror_links(self, format=False) -> "list[str]":
+    def get_mirror_links(self, format=False) -> list[str]:
         """ Get mirror links to download beatmap. \n
         `format=True` will make it return '[link alias]' for each link, which shows the alias in the osu! lobby
         """
@@ -54,14 +54,14 @@ class MapChoice:
     """ Uppercase tournament label for map following common conventions. eg: 'HD1', 'DTHR2', etc. """
     alias: str
     """ Optional alias for map label provided by user. Defaults to `label` """
-    # labels_lookup: "set[str]" # TODO: all lowercase + support alt formats, like 'hr 1' -> 'hr1' or 'hrhd1' -> 'hdhr1'
+    # labels_lookup: set[str] # TODO: all lowercase + support alt formats, like 'hr 1' -> 'hr1' or 'hrhd1' -> 'hdhr1'
     mapid: int
     mods: str
     teammode: int  # 0: head to head, 1: tag coop, 2: team vs, 3: tag team vs
     scoremode: int  # 0: score, 1: accuracy, 2: combo, 3: score v2
     description: str
     """ Friendly map string, eg 'artist - title [diff] (creator)' """
-    map_info: "Union[MapInfo, None]" = None
+    map_info: MapInfo | None = None
     """ All map info from public apis, if available """
     
     def get_osu_link(self, format=False) -> str:
@@ -70,7 +70,7 @@ class MapChoice:
         """
         return get_osu_link(self.mapid, format)
     
-    def get_mirror_links(self, format=False) -> "list[str]":
+    def get_mirror_links(self, format=False) -> list[str]:
         """ Get mirror links to download beatmap. \n
         `format=True` will make it return '[link alias]' for each link, which shows the alias in the osu! lobby
         """
@@ -104,11 +104,11 @@ class Config:
     teammode: int = 0  # 0: head to head, 1: tag coop, 2: team vs, 3: tag team vs
     scoremode: int = 3  # 0: score, 1: accuracy, 2: combo, 3: score v2
     always_use_nf: bool = True
-    raw_commands: "list[str]" = field(default_factory=list)
+    raw_commands: list[str] = field(default_factory=list)
     # referees, players, maps
-    refs: "set[str]" = field(default_factory=set)
-    players: "set[str]" = field(default_factory=set)
-    maps: "list[MapChoice]" = field(default_factory=list)
+    refs: set[str] = field(default_factory=set)
+    players: set[str] = field(default_factory=set)
+    maps: list[MapChoice] = field(default_factory=list)
     # irc settings
     bot_target: str = 'BanchoBot'
     server: str = 'irc.ppy.sh'
@@ -120,7 +120,7 @@ class Config:
     motd_timeout: float = 3.0
     event_delay_timeout: float = 0.8
     # misc settings
-    log_level: "Union[int, str]" = 'INFO'
+    log_level: int | str = 'INFO'
     enable_console_colors: bool = True
     max_history_lines: int = 200
 
@@ -133,7 +133,7 @@ def get_osu_link(mapid: int, format=False) -> str:
     link = (f"https://osu.ppy.sh/b/{mapid}", "osu.ppy.sh")
     return f"[{link[0]} {link[1]}]" if format else link[0]
 
-def get_mirror_links(setid: int, format=False) -> "list[str]":
+def get_mirror_links(setid: int, format=False) -> list[str]:
     """ Get mirror links to download mapset. \n
     `format=True` will make it return '[link alias]' for each link, which shows the alias in the osu! lobby
     """
@@ -172,7 +172,7 @@ def try_get_osuv2_credentials(cfg: Config):
     creds.token = BearerToken(str(data['access_token']), expires)
     return True
 
-def try_get_map_info(cfg: Config, mapid: int, label: str = '', mods: str = '') -> "Union[MapInfo, None]":
+def try_get_map_info(cfg: Config, mapid: int, label: str = '', mods: str = '') -> MapInfo | None:
     """Try to get a map's info (set name, diff name, etc.) from public apis"""
     if mapid is None: return None
     try:
@@ -362,7 +362,7 @@ class OsuModFlags(Flag):
     FreeModAllowed = NF | EZ | HD | HR | SD | FL | FI | RL | AP | SO | KeyMod
     ScoreIncreaseMods = HD | HR | DT | FL | FI
 
-def mods_to_flags(mods: "Union[str, list[str]]"):
+def mods_to_flags(mods: str | list[str]):
     if isinstance(mods, str):
         mods = mods.split(' ')
     flags = OsuModFlags._None

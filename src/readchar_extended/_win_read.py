@@ -1,3 +1,4 @@
+from __future__ import annotations
 from readchar import readchar as __readchar, readkey as __readkey
 
 def readchar() -> str:
