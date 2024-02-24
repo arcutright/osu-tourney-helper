@@ -3,8 +3,7 @@ import sys
 import re
 import traceback
 import shutil
-import multiprocessing
-from multiprocessing.synchronize import Event
+from threading import Event
 import pyperclip # clipboard support
 
 import readchar_extended.key as keycode
@@ -22,7 +21,7 @@ class InteractiveConsole:
     ):
         self.bot = bot
         self.cfg = cfg
-        self.stop_event = value_or_fallback(stop_event, multiprocessing.Event())
+        self.stop_event = value_or_fallback(stop_event, Event())
         self._stopped = False
 
         self.insert_mode = False
@@ -431,8 +430,8 @@ class DummyBot:
 def test_interactive_console(stop_event: Event | None = None):
     cfg = parse_config()
     Console.enable_colors = cfg.enable_console_colors
-    bot_response_event = multiprocessing.Event()
-    bot_motd_event = multiprocessing.Event()
+    bot_response_event = Event()
+    bot_motd_event = Event()
     bot = DummyBot(bot_motd_event, bot_response_event)
     iconsole = InteractiveConsole(bot, cfg, stop_event)
     iconsole.main_loop()

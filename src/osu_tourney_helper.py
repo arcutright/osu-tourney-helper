@@ -3,8 +3,7 @@ import sys
 import traceback
 import ssl
 import threading
-import multiprocessing
-from multiprocessing.synchronize import Event
+from threading import Event
 from typing import Callable
 import irc
 import irc.bot
@@ -66,10 +65,10 @@ def main_bot():
     else:
         connect_factory = irc.connection.Factory()
 
-    stop_event = multiprocessing.Event()
-    map_infos_populated_event = multiprocessing.Event()
-    bot_response_event = multiprocessing.Event()
-    bot_motd_event = multiprocessing.Event()
+    stop_event = Event()
+    map_infos_populated_event = Event()
+    bot_response_event = Event()
+    bot_motd_event = Event()
     bot = OsuIRCBot(
         cfg,
         response_event=bot_response_event,

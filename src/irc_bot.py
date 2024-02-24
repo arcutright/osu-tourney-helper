@@ -2,9 +2,8 @@ from __future__ import annotations
 import sys
 import re
 import threading
+from threading import Event
 from typing import Callable
-import multiprocessing
-from multiprocessing.synchronize import Event as MpEvent
 import irc.bot
 import irc.events
 import irc.dict
@@ -56,9 +55,9 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
     any of its own commands.
     """
     def __init__(self, cfg: Config,
-                 response_event: MpEvent | None = None,
-                 motd_event: MpEvent | None = None,
-                 map_infos_populated_event: MpEvent | None = None,
+                 response_event: Event | None = None,
+                 motd_event: Event | None = None,
+                 map_infos_populated_event: Event | None = None,
                  **connect_params):
         server_list = [(cfg.server, cfg.port, cfg.password)] if cfg.password else [(cfg.server, cfg.port)]
         irc.bot.SingleServerIRCBot.__init__(self, server_list, nickname=cfg.nickname, realname=cfg.username, username=cfg.username, **connect_params)
@@ -68,11 +67,11 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
         self.event_delay_timeout = value_or_fallback(cfg.event_delay_timeout, 0.8)
         self.motd_timeout = value_or_fallback(cfg.motd_timeout, 3.0)
         self.response_timeout = value_or_fallback(cfg.response_timeout, 5.0)
-        self.response_event = value_or_fallback(response_event, multiprocessing.Event())
-        self.motd_event = value_or_fallback(motd_event, multiprocessing.Event())
+        self.response_event = value_or_fallback(response_event, Event())
+        self.motd_event = value_or_fallback(motd_event, Event())
         self.motd_event.clear()
         self.response_event.clear()
-        self.map_infos_populated_event = value_or_fallback(map_infos_populated_event, multiprocessing.Event())
+        self.map_infos_populated_event = value_or_fallback(map_infos_populated_event, Event())
 
         self.room_id = ''
         self._motd_timer = None

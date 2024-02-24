@@ -1,6 +1,5 @@
 from __future__ import annotations
-import multiprocessing
-from multiprocessing.synchronize import Event as MpEvent
+from threading import Event
 from datetime import datetime
 from time import sleep
 import pprint
@@ -19,9 +18,9 @@ from irc_bot import BaseOsuIRCBot
 
 class OsuIRCBot(BaseOsuIRCBot):
     def __init__(self, cfg: Config,
-                 response_event: MpEvent | None = None,
-                 motd_event: MpEvent | None = None,
-                 map_infos_populated_event: MpEvent | None = None,
+                 response_event: Event | None = None,
+                 motd_event: Event | None = None,
+                 map_infos_populated_event: Event | None = None,
                  **connect_params):
         BaseOsuIRCBot.__init__(
             self,

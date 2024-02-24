@@ -4,7 +4,7 @@ import sys
 import re
 import logging
 import traceback
-import multiprocessing
+import threading
 from typing import Final, Callable, TextIO
 import subprocess
 import shutil
@@ -55,7 +55,7 @@ class Console:
     is re-written. This makes it feel like the conosle prompt "floats" at 
     the bottom of the console.
     """
-    _LOCK = multiprocessing.RLock()
+    _LOCK = threading.RLock()
     """Used to ensure the console vs user outputs are kept separate in the `Console.*write*` funcs and `LockedWriter` """
     _last_source = '' # blank = not the console, 'c' = the console
     _console_stdout: list[str] = []
