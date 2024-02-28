@@ -453,6 +453,7 @@ def parse_config() -> Config:
     else:
         log.warn(f"Log level '{log_level}' not recognized, defaulting to INFO")
         cfg.log_level = logging.INFO
+    setup_logging(cfg.log_level)
     
     # [maps] section
     cfg.maps = []
@@ -542,5 +543,4 @@ def parse_config() -> Config:
         return None
     
     cfg.nickname = cfg.nickname or cfg.username
-    setup_logging(cfg.log_level)
     return cfg

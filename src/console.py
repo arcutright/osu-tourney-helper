@@ -46,6 +46,12 @@ def setup_logging(level=logging.INFO):
                         format="%(asctime)s [%(levelname)s] %(module)s - %(funcName)s: %(message)s",
                         datefmt='%Y-%m-%d %H:%M:%S')
                         # format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s")
+    log.setLevel(level)
+    if not log.handlers:
+        log.addHandler(stdoutHandler)
+    else:
+        for handler in log.handlers:
+            handler.setLevel(level)
 
 
 class Console:
