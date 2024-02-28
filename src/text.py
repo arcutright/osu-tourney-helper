@@ -604,11 +604,15 @@ def measure_new_font(font_or_path: FreeTypeFont | str, should_print=True, should
     # get a nice formatted dict in your console that can be dropped into the cache below
     font_name = get_font_short_name(font)
     if should_print:
-        print(f"'{font_name}': {{")
         output = repr(measures).strip("'")
-        i = 1
-        for ch in ['q', 'a', 'z', '~', 'Q', 'A', 'Z', ' ']:
-            j = output.find(f"'{ch}'", i)
+        if not should_wrap:
+            print(f"'{font_name}': {{ {output} }},")
+        else:
+            print(f"'{font_name}': {{")
+            i = 1
+            j = 0
+            for ch in ['q', 'a', 'z', '~', 'Q', 'A', 'Z', ' ']:
+                j = output.find(f"'{ch}'", i)
             if j == -1:
                 j = i
                 break

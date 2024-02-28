@@ -200,12 +200,12 @@ class BaseOsuIRCBot(irc.bot.SingleServerIRCBot):
     
     def _format_channel(self, channel: str):
         if not channel: return ''
-        return '#' + channel.strip().strip('#').strip().replace(' ', '_')
+        return '#' + channel.strip(' #').replace(' ', '_')
     
     def _format_user(self, user: str):
         user = self.get_user(user)
         if not user: return ''
-        return user.strip().strip('#').strip().replace(' ', '_')
+        return user.strip(' #').replace(' ', '_')
     
     ## ----------------------------------------------------------------------
     #  irc response / motd events

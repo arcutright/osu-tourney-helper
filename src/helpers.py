@@ -4,6 +4,7 @@ import ssl
 import json
 from datetime import datetime, timedelta
 from http.client import HTTPResponse
+from typing import TypeVar, Callable, Generator, Generic, Optional
 import urllib.error, urllib.request, urllib.response, urllib.parse
 import dateutil.parser
 
@@ -38,6 +39,22 @@ def get_many(d: dict, *keys, default=None):
 
 def flatten(list_of_lists: list[list]):
     return [val for sublist in list_of_lists for val in sublist]
+
+T = TypeVar('T')
+
+class Lazy(Generic[T]):
+    def __init__(self, func: Callable[[], T]):
+        self._func = func
+        self._value: T | None = None
+    
+    def __call__(self) -> T:
+        return self.value
+    
+    @cached_property
+    def value(self):
+        if self._value is None:
+            self._value = self._func()
+        return self._value
 
 class JsonResponse:
     """Wrapper over a dict + status code / ok and message in case of not ok.

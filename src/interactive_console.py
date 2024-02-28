@@ -81,6 +81,18 @@ class InteractiveConsole:
             self.current_input.clear()
             self.current_input_idx = 0
 
+    def add_to_history(self, input: str | list[str]):
+        if not input:
+            return
+        if isinstance(input, list):
+            self.history.append(input.copy())
+        else:
+            self.history.append(list(input))
+        if self.cfg.max_history_lines > 0 and len(self.history) > self.cfg.max_history_lines:
+            i = len(self.history) - self.cfg.max_history_lines
+            self.history = self.history[i:]
+        self.history_idx = len(self.history)
+
     def replace_current_stdin_with_history(self, w: Console.LockedWriter, history_idx: int):
         """Reset 'stdin' to show the console prompt followed by the history at `history_idx`. \n
         If `history_idx` = -1, resets it to `current_input` and will restore cursor pos. \n
@@ -209,11 +221,7 @@ class InteractiveConsole:
                 self.current_input_idx = max(0, min(self.current_input_idx, len(self.current_input)))
 
                 if ch in (keycode.ENTER, keycode.CR, keycode.LF, keycode.ENTER_2):
-                    self.history.append(self.current_input.copy())
-                    if self.cfg.max_history_lines > 0 and len(self.history) > self.cfg.max_history_lines:
-                        i = len(self.history) - self.cfg.max_history_lines
-                        self.history = self.history[i:]
-                    self.history_idx = len(self.history)
+                    self.add_to_history(self.current_input)
                     w.write('\n')
                     line = ''.join(self.current_input).strip()
                     self.current_input.clear()
@@ -230,7 +238,9 @@ class InteractiveConsole:
                         self.history_idx += 1
                     self.replace_current_stdin_with_history(w, self.history_idx)
 
-                # TODO: if SHIFT is held, should select while moving
+                # TODO: if SHIFT is held, should select while moving (LEFT, RIGHT, HOME, END)
+                # TODO: CTRL+A for 'select all'
+
                 elif ch == keycode.LEFT:
                     self.move_cursor_left(1)
                     
@@ -385,47 +395,8 @@ class InteractiveConsole:
 
 # -------------------------------------------------------------
 # dummy code to test the interactive console behavior
-
-class DummyBot:
-    def __init__(self, motd_event: Event, response_event: Event):
-        self.motd_event = motd_event
-        self.response_event = response_event
-        motd_event.set()
-
-    def clear_response_event(self):
-        self.response_event.clear()
-
-    def send_bot_command(self, msg):
-        Console.writeln(f"DummyBot send_bot_command: '{msg}'")
-        self.response_event.set()
-
-    def send_message(self, channel: str, content: str):
-        Console.writeln(f"DummyBot send_message: '{channel}' -> '{content}'")
-        self.response_event.set()
-
-    def send_pm(self, user: str, content: str):
-        Console.writeln(f"DummyBot send_pm: '{user}' -> '{content}'")
-        self.response_event.set()
-
-    def send_raw(self, content: str):
-        Console.writeln(f"DummyBot send_raw: '{content}'")
-        self.response_event.set()
-
-    def join_channel(self, channel: str):
-        Console.writeln(f"DummyBot join_channel: '{channel}'")
-        self.response_event.set()
-
-    def close_room(self, warn=True):
-        Console.writeln(f"DummyBot close_room. warn={warn}")
-        self.response_event.set()
-
-    def stop(self):
-        Console.writeln(f"DummyBot stop")
-        self.response_event.set()
-
-    def shutdown(self):
-        Console.writeln(f"DummyBot shutdown")
-        self.response_event.set()
+    
+from dummy_bot import DummyBot
 
 def test_interactive_console(stop_event: Event | None = None):
     cfg = parse_config()

@@ -19,9 +19,12 @@ In no particular order, these are todos:
 
 ## Console features
 
+- Support special keys when waiting for a response (ie, UP is blocked when waiting on a response from bancho if you send an invalid command)
 - Support for text selection (need to track keyboard to tell when shift key is held on windows platforms)
 - Tab completion for
   - names of players, refs, people in room
   - our commands
   - labels of maps in map commands
   - bancho commands
+
+- Clear screen
